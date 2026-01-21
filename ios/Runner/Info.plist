@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>需要蓝牙权限来连接和管理编程卡设备</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>需要蓝牙权限来连接和管理编程卡设备</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>蓝牙功能需要位置权限（iOS系统要求）</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>蓝牙功能需要位置权限（iOS系统要求）</string>
 </dict>
 </plist>
