@@ -1,0 +1,42 @@
+{
+  "group": "A",
+  "displayName": "参数组A",
+  "parameters": [
+    {
+      "key": "A0",
+      "name": "温度设定",
+      "unit": "°C",
+      "min": 0.0,
+      "max": 100.0,
+      "precision": 2,
+      "value": 25.0
+    },
+    {
+      "key": "A1",
+      "name": "湿度设定",
+      "unit": "%",
+      "min": 0.0,
+      "max": 100.0,
+      "precision": 2,
+      "value": 60.0
+    },
+    {
+      "key": "A2",
+      "name": "压力设定",
+      "unit": "kPa",
+      "min": 0.0,
+      "max": 200.0,
+      "precision": 1,
+      "value": 101.3
+    },
+    {
+      "key": "A3",
+      "name": "流量设定",
+      "unit": "L/min",
+      "min": 0.0,
+      "max": 50.0,
+      "precision": 2,
+      "value": 10.0
+    }
+  ]
+}

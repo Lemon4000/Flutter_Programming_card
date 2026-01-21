@@ -1,0 +1,268 @@
+import 'dart:async';
+import 'package:dartz/dartz.dart';
+import '../../core/errors/failures.dart';
+import '../../domain/entities/parameter_group.dart';
+import '../../domain/repositories/communication_repository.dart';
+import '../datasources/bluetooth_datasource.dart';
+import '../protocol/frame_builder.dart';
+import '../protocol/frame_parser.dart';
+import '../protocol/protocol_config.dart';
+
+/// 通信仓库实现
+class CommunicationRepositoryImpl implements CommunicationRepository {
+  final BluetoothDatasource _bluetoothDatasource;
+  final ProtocolConfig _protocolConfig;
+  late final FrameBuilder _frameBuilder;
+  late final FrameParser _frameParser;
+
+  final _logController = StreamController<String>.broadcast();
+
+  StreamSubscription? _dataSubscription;
+  List<int> _buffer = [];
+
+  CommunicationRepositoryImpl(
+    this._bluetoothDatasource,
+    this._protocolConfig,
+  ) {
+    _frameBuilder = FrameBuilder(_protocolConfig);
+    _frameParser = FrameParser(_protocolConfig);
+
+    // 监听数据流并解析
+    _dataSubscription = _bluetoothDatasource.dataStream.listen(_handleData);
+  }
+
+  /// 处理接收到的数据
+  void _handleData(List<int> data) {
+    try {
+      // 添加到缓冲区
+      _buffer.addAll(data);
+
+      // 尝试提取完整帧
+      while (true) {
+        final (frame, remaining) = _frameParser.findCompleteFrame(_buffer);
+        if (frame == null) {
+          _buffer = remaining;
+          break;
+        }
+
+        _buffer = remaining;
+        // 这里可以处理完整的帧
+        _addLog('接收完整帧: ${frame.length} 字节');
+      }
+    } catch (e) {
+      _addLog('处理数据错误: $e');
+    }
+  }
+
+  /// 添加日志
+  void _addLog(String message) {
+    final timestamp = DateTime.now().toString().substring(11, 23);
+    _logController.add('[$timestamp] $message');
+  }
+
+  @override
+  Future<Either<Failure, ParameterGroupEntity>> readParameters(
+    String group,
+  ) async {
+    try {
+      // 检查连接
+      if (!_bluetoothDatasource.isConnected) {
+        return const Left(ConnectionFailure('设备未连接'));
+      }
+
+      // 构建读取请求帧
+      final frame = _frameBuilder.buildReadRequest(group);
+      _addLog('发送读取请求: $group');
+
+      // 发送帧
+      await _bluetoothDatasource.write(frame);
+
+      // 等待响应
+      final response = await _responseController.stream
+          .firstWhere(
+            (r) => r is ReadResponse,
+            orElse: () => const UnknownResponse('超时'),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response is ReadResponse) {
+        // 转换为参数实体
+        final parameters = response.parameters.entries
+            .map((e) => ParameterEntity(
+                  key: e.key,
+                  name: e.key,
+                  unit: '',
+                  min: 0,
+                  max: 100,
+                  precision: 2,
+                  value: e.value,
+                ))
+            .toList();
+
+        return Right(ParameterGroupEntity(
+          group: group,
+          displayName: '参数组$group',
+          parameters: parameters,
+        ));
+      } else {
+        return const Left(ProtocolFailure('读取失败: 响应格式错误'));
+      }
+    } on TimeoutException {
+      return const Left(TimeoutFailure('读取超时'));
+    } catch (e) {
+      return Left(ProtocolFailure('读取失败: ${e.toString()}'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, bool>> writeParameters(
+    String group,
+    Map<String, double> parameters,
+  ) async {
+    try {
+      // 检查连接
+      if (!_bluetoothDatasource.isConnected) {
+        return const Left(ConnectionFailure('设备未连接'));
+      }
+
+      // 构建精度映射（默认2位小数）
+      final precisionMap = <String, int>{};
+      for (final key in parameters.keys) {
+        precisionMap[key] = 2;
+      }
+
+      // 构建写入帧
+      final frame = _frameBuilder.buildWriteFrame(
+        group,
+        parameters,
+        precisionMap,
+      );
+      _addLog('发送写入请求: $parameters');
+
+      // 发送帧
+      await _bluetoothDatasource.write(frame);
+
+      // 等待响应
+      final response = await _responseController.stream
+          .firstWhere(
+            (r) => r is WriteResponse,
+            orElse: () => const WriteResponse(success: false, message: '超时'),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response is WriteResponse) {
+        if (response.success) {
+          _addLog('写入成功');
+          return const Right(true);
+        } else {
+          _addLog('写入失败: ${response.message}');
+          return Left(ProtocolFailure('写入失败: ${response.message}'));
+        }
+      } else {
+        return const Left(ProtocolFailure('写入失败: 响应格式错误'));
+      }
+    } on TimeoutException {
+      return const Left(TimeoutFailure('写入超时'));
+    } catch (e) {
+      return Left(ProtocolFailure('写入失败: ${e.toString()}'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, bool>> flashFirmware(
+    String hexFilePath, {
+    void Function(double progress, String message)? onProgress,
+  }) async {
+    try {
+      // 检查连接
+      if (!_bluetoothDatasource.isConnected) {
+        return const Left(ConnectionFailure('设备未连接'));
+      }
+
+      // 读取并解析HEX文件
+      final file = File(hexFilePath);
+      if (!await file.exists()) {
+        return const Left(FileFailure('HEX文件不存在'));
+      }
+
+      final content = await file.readAsString();
+      final parser = HexParser();
+
+      if (!parser.parseContent(content)) {
+        return const Left(FileFailure('HEX文件格式错误'));
+      }
+
+      _addLog('开始烧录固件');
+      onProgress?.call(0.0, '准备烧录');
+
+      // 发送烧录起始帧
+      final startFrame = _frameBuilder.buildFlashStartFrame();
+      await _bluetoothDatasource.write(startFrame);
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // 获取数据块
+      final blocks = parser.getDataBlocks(blockSize: 256);
+      _addLog('总共 ${blocks.length} 个数据块');
+
+      // 逐块发送数据
+      for (int i = 0; i < blocks.length; i++) {
+        final block = blocks[i];
+        final dataFrame = _frameBuilder.buildFlashDataFrame(
+          block.address,
+          block.data,
+        );
+
+        await _bluetoothDatasource.write(dataFrame);
+        await Future.delayed(const Duration(milliseconds: 50));
+
+        final progress = (i + 1) / blocks.length;
+        final message = '烧录中 ${i + 1}/${blocks.length}';
+        onProgress?.call(progress, message);
+        _addLog(message);
+      }
+
+      // 计算并发送校验帧
+      final crc = parser.calculateCRC();
+      final verifyFrame = _frameBuilder.buildFlashVerifyFrame(crc);
+      await _bluetoothDatasource.write(verifyFrame);
+
+      _addLog('等待校验响应');
+      onProgress?.call(0.99, '校验中');
+
+      // 等待校验响应
+      final response = await _responseController.stream
+          .firstWhere(
+            (r) => r is FlashResponse,
+            orElse: () => const FlashResponse(success: false, message: '超时'),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response is FlashResponse) {
+        if (response.success) {
+          _addLog('烧录成功');
+          onProgress?.call(1.0, '烧录完成');
+          return const Right(true);
+        } else {
+          _addLog('烧录失败: ${response.message}');
+          return Left(FlashFailure('烧录失败: ${response.message}'));
+        }
+      } else {
+        return const Left(FlashFailure('烧录失败: 响应格式错误'));
+      }
+    } on TimeoutException {
+      return const Left(TimeoutFailure('烧录超时'));
+    } catch (e) {
+      return Left(FlashFailure('烧录失败: ${e.toString()}'));
+    }
+  }
+
+  @override
+  Stream<String> get logStream => _logController.stream;
+
+  /// 释放资源
+  void dispose() {
+    _dataSubscription?.cancel();
+    _logController.close();
+    _responseController.close();
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "name": "A组参数",
+  "groupId": "A",
+  "parameters": [
+    {
+      "key": "A0",
+      "name": "Motor_Np",
+      "unit": "V",
+      "min": 1.0,
+      "max": 50.0,
+      "precision": 2,
+      "default": 14.0
+    },
+    {
+      "key": "A1",
+      "name": "Rs_mO",
+      "unit": "rpm",
+      "min": 0.0,
+      "max": 500.0,
+      "precision": 2,
+      "default": 60.0
+    },
+    {
+      "key": "A2",
+      "name": "Lq_uH",
+      "unit": "A",
+      "min": 0.0,
+      "max": 500.0,
+      "precision": 2,
+      "default": 45.0
+    },
+    {
+      "key": "A3",
+      "name": "Flux",
+      "unit": "FI",
+      "min": 0.0,
+      "max": 2000.0,
+      "precision": 2,
+      "default": 665.0
+    },
+    {
+      "key": "A4",
+      "name": "Motor_PeakTorqueEle",
+      "unit": "0.A",
+      "min": 0.0,
+      "max": 5000.0,
+      "precision": 2,
+      "default": 1000.0
+    },
+    {
+      "key": "A5",
+      "name": "Motor_PeakTorqueGen",
+      "unit": "0.A",
+      "min": 0.0,
+      "max": 2000.0,
+      "precision": 2,
+      "default": 300.0
+    },
+    {
+      "key": "A6",
+      "name": "GammaMax",
+      "unit": "无",
+      "min": 0.0,
+      "max": 100.0,
+      "precision": 2,
+      "default": 5.0
+    },
+    {
+      "key": "A7",
+      "name": "FluxPll_omega",
+      "unit": "无",
+      "min": 0.0,
+      "max": 10000.0,
+      "precision": 2,
+      "default": 2500.0
+    },
+    {
+      "key": "A8",
+      "name": "FluxPll_xi",
+      "unit": "无",
+      "min": 0.0,
+      "max": 10000.0,
+      "precision": 2,
+      "default": 50.0
+    },
+    {
+      "key": "A9",
+      "name": "Id_kp",
+      "unit": "无",
+      "min": 0.0,
+      "max": 50.0,
+      "precision": 2,
+      "default": 25.0
+    },
+    {
+      "key": "A10",
+      "name": "Iq_kp",
+      "unit": "无",
+      "min": 0.0,
+      "max": 50.0,
+      "precision": 2,
+      "default": 25.0
+    },
+    {
+      "key": "A11",
+      "name": "Id_ki",
+      "unit": "无",
+      "min": 0.0,
+      "max": 50.0,
+      "precision": 2,
+      "default": 2.0
+    },
+    {
+      "key": "A12",
+      "name": "Iq_ki",
+      "unit": "无",
+      "min": 0.0,
+      "max": 50.0,
+      "precision": 2,
+      "default": 2.0
+    },
+    {
+      "key": "A13",
+      "name": "LADRC_b0",
+      "unit": "无",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 200.0
+    },
+    {
+      "key": "A14",
+      "name": "LADRC_Omega_c_Start",
+      "unit": "无",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 10.0
+    },
+    {
+      "key": "A15",
+      "name": "ratedspeed",
+      "unit": "rpm",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 2400.0
+    },
+    {
+      "key": "A16",
+      "name": "maxspeed",
+      "unit": "rpm",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 4450.0
+    },
+    {
+      "key": "A17",
+      "name": "ratedpwm",
+      "unit": "uS",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 1500.0
+    },
+    {
+      "key": "A18",
+      "name": "Motor_Protect_AlarmTempCtr",
+      "unit": "无",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 100.0
+    },
+    {
+      "key": "A19",
+      "name": "Motor_Protect_OverTempCtr",
+      "unit": "无",
+      "min": 0.0,
+      "max": 100000.0,
+      "precision": 2,
+      "default": 115.0
+    }
+  ]
+}

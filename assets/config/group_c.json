@@ -1,0 +1,42 @@
+{
+  "group": "C",
+  "displayName": "参数组C",
+  "parameters": [
+    {
+      "key": "C0",
+      "name": "速度设定",
+      "unit": "rpm",
+      "min": 0.0,
+      "max": 3000.0,
+      "precision": 0,
+      "value": 1500.0
+    },
+    {
+      "key": "C1",
+      "name": "加速度设定",
+      "unit": "rpm/s",
+      "min": 0.0,
+      "max": 1000.0,
+      "precision": 0,
+      "value": 100.0
+    },
+    {
+      "key": "C2",
+      "name": "位置设定",
+      "unit": "mm",
+      "min": 0.0,
+      "max": 500.0,
+      "precision": 2,
+      "value": 0.0
+    },
+    {
+      "key": "C3",
+      "name": "角度设定",
+      "unit": "°",
+      "min": 0.0,
+      "max": 360.0,
+      "precision": 1,
+      "value": 0.0
+    }
+  ]
+}

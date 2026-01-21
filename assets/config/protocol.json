@@ -1,0 +1,7 @@
+{
+  "preamble": "FC",
+  "checksumType": "CRC16_MODBUS",
+  "baudRate": 2000000,
+  "txStart": "!",
+  "rxStart": "#"
+}

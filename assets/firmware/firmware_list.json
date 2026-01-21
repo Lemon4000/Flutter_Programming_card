@@ -1,0 +1,8 @@
+[
+  {
+    "name": "测试固件 v1.0",
+    "filename": "test_firmware_v1.0.hex",
+    "version": "1.0.0",
+    "description": "用于测试的示例固件"
+  }
+]
