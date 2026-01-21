@@ -126,6 +126,101 @@ class FrameParser {
     }
   }
 
+  /// 解析参数写入响应
+  /// 
+  /// 格式: [前导码]#OK;[校验值] 或 #REPLY:[2字节CRC];[校验值] 或 #ERROR:message;[校验值]
+  /// 注意: 接收响应通常没有前导码，直接以 # 开始
+  /// 
+  /// 返回: true表示成功，false表示失败或校验错误
+  bool? parseWriteParameterResponse(List<int> frame) {
+    try {
+      // 1. 检查前导码（接收响应通常没有前导码）
+      final preambleBytes = config.getRxPreambleBytes();  // 使用接收前导码
+      if (frame.length < preambleBytes.length + 3) {
+        print('写入响应帧太短: ${frame.length}');
+        return null;
+      }
+
+      for (int i = 0; i < preambleBytes.length; i++) {
+        if (frame[i] != preambleBytes[i]) {
+          print('写入响应前导码不匹配');
+          return null;
+        }
+      }
+
+      // 2. 提取载荷（去掉前导码和校验值）
+      final checksumLength = config.checksumType == ChecksumType.crc16Modbus ? 2 : 1;
+      final payloadBytes = frame.sublist(
+        preambleBytes.length,
+        frame.length - checksumLength,
+      );
+      final checksumBytes = frame.sublist(frame.length - checksumLength);
+
+      // 3. 验证校验值
+      if (!CrcCalculator.verifyChecksum(
+        payloadBytes,
+        checksumBytes,
+        config.checksumType.value,
+      )) {
+        print('写入响应CRC校验失败');
+        print('载荷: ${String.fromCharCodes(payloadBytes)}');
+        print('接收的校验值: ${checksumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        return null;
+      }
+
+      // 4. 解析载荷
+      final payload = String.fromCharCodes(payloadBytes);
+      print('写入响应载荷: $payload');
+      
+      // 检查起始符
+      if (!payload.startsWith(config.rxStart)) {
+        print('写入响应起始符不匹配');
+        return null;
+      }
+
+      // 检查响应格式
+      // 格式1: #OK;
+      // 格式2: #REPLY:[2字节CRC];
+      
+      if (payload.contains('REPLY:')) {
+        // 格式2: #REPLY:[2字节CRC];
+        // 提取CRC值（在REPLY:和;之间的2个字节）
+        final replyIndex = payload.indexOf('REPLY:');
+        final semicolonIndex = payload.indexOf(';', replyIndex);
+        
+        if (replyIndex != -1 && semicolonIndex != -1) {
+          final crcStartIndex = replyIndex + 6; // "REPLY:" 长度为6
+          final crcEndIndex = semicolonIndex;
+          
+          if (crcEndIndex - crcStartIndex == 2) {
+            // 提取2字节CRC
+            final crcByte1 = payloadBytes[crcStartIndex];
+            final crcByte2 = payloadBytes[crcStartIndex + 1];
+            final replyCrc = crcByte1 | (crcByte2 << 8);
+            
+            print('写入参数成功，设备返回CRC: 0x${replyCrc.toRadixString(16).padLeft(4, '0').toUpperCase()}');
+            return true;
+          }
+        }
+      } else if (payload.contains('OK')) {
+        // 格式1: #OK;
+        print('写入参数成功，CRC校验通过');
+        return true;
+      } else if (payload.contains('ERROR')) {
+        // 错误响应
+        final content = payload.substring(1, payload.length - 1);
+        print('写入参数失败: $content');
+        return false;
+      }
+
+      print('未知的写入响应格式: $payload');
+      return null;
+    } catch (e) {
+      print('解析写入响应异常: $e');
+      return null;
+    }
+  }
+
   /// 解析烧录响应
   /// 
   /// 格式: [前导码]#OK:CRC0xABCD;[校验值] 或 #ERROR:message;

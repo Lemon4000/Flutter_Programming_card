@@ -74,7 +74,7 @@ class BluetoothDatasource {
         final bondedDevices = await FlutterBluePlus.bondedDevices;
         _bondedDeviceNames.clear();
         for (var device in bondedDevices) {
-          final id = device.remoteId.toString();
+          final id = device.remoteId.toString().toLowerCase(); // 统一转换为小写
           final name = device.platformName;
           if (name.isNotEmpty) {
             _bondedDeviceNames[id] = name;

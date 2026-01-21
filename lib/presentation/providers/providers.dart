@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/bluetooth_datasource.dart';
+import '../../data/datasources/serial_port_datasource.dart';
+import '../../data/datasources/communication_datasource.dart';
 import '../../data/protocol/protocol_config.dart';
 import '../../data/repositories/communication_repository_impl.dart';
 import '../../data/repositories/config_repository_impl.dart';
@@ -21,6 +23,22 @@ import '../../domain/usecases/write_parameters_usecase.dart';
 final bluetoothDatasourceProvider = Provider<BluetoothDatasource>((ref) {
   return BluetoothDatasource();
 });
+
+/// 串口数据源 Provider
+final serialPortDatasourceProvider = Provider<SerialPortDatasource>((ref) {
+  return SerialPortDatasource();
+});
+
+/// 当前通信类型 Provider
+final communicationTypeProvider = StateProvider<CommunicationType>((ref) {
+  return CommunicationType.bluetooth;
+});
+
+/// 选中的串口名称 Provider
+final selectedSerialPortProvider = StateProvider<String?>((ref) => null);
+
+/// 串口波特率 Provider
+final serialPortBaudRateProvider = StateProvider<int>((ref) => 115200);
 
 /// 协议配置 Provider
 final protocolConfigProvider = FutureProvider<ProtocolConfig>((ref) async {
@@ -50,10 +68,16 @@ final configRepositoryProvider = Provider<ConfigRepository>((ref) {
 
 /// 通信仓库 Provider
 final communicationRepositoryProvider = FutureProvider<CommunicationRepository>((ref) async {
-  final datasource = ref.watch(bluetoothDatasourceProvider);
+  final communicationType = ref.watch(communicationTypeProvider);
   final protocolConfig = await ref.watch(protocolConfigProvider.future);
 
-  return CommunicationRepositoryImpl(datasource, protocolConfig, ref);
+  if (communicationType == CommunicationType.bluetooth) {
+    final datasource = ref.watch(bluetoothDatasourceProvider);
+    return CommunicationRepositoryImpl.bluetooth(datasource, protocolConfig, ref);
+  } else {
+    final datasource = ref.watch(serialPortDatasourceProvider);
+    return CommunicationRepositoryImpl.serialPort(datasource, protocolConfig, ref);
+  }
 });
 
 // ============================================================================

@@ -283,6 +283,38 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
               ),
             ),
           ],
+
+          // 连续发送按钮
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: ref.watch(isContinuousSendingProvider)
+                      ? null
+                      : _sendAllDataFrames,
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: Text('连续发送全部 (${dataBlocks.length} 块)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+              if (ref.watch(isContinuousSendingProvider)) ...[
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  onPressed: _stopContinuousSending,
+                  icon: const Icon(Icons.stop, size: 18),
+                  label: const Text('停止'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ],
     );
@@ -492,5 +524,73 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
         setState(() => _isVerifyLoading = false);
       }
     }
+  }
+
+  /// 连续发送全部数据帧
+  Future<void> _sendAllDataFrames() async {
+    final hexFile = ref.read(debugHexFileProvider);
+    final dataBlocks = hexFile?.dataBlocks;
+
+    if (hexFile == null || dataBlocks == null || dataBlocks.isEmpty) {
+      return;
+    }
+
+    final sendInterval = ref.read(sendIntervalProvider);
+    
+    // 标记为正在连续发送
+    ref.read(isContinuousSendingProvider.notifier).state = true;
+    setState(() => _isDataFrameLoading = true);
+
+    try {
+      final debugService = ref.read(debugServiceProvider);
+
+      // 从当前块开始发送到最后一块
+      final startIndex = ref.read(debugBlockIndexProvider);
+      
+      for (int i = startIndex; i < dataBlocks.length; i++) {
+        // 检查是否被停止
+        if (!ref.read(isContinuousSendingProvider)) {
+          addDebugLog(ref, '连续发送已停止');
+          break;
+        }
+
+        // 更新当前块索引
+        ref.read(debugBlockIndexProvider.notifier).state = i;
+
+        final block = dataBlocks[i];
+        addDebugLog(ref, '发送数据帧: 块 $i/${dataBlocks.length - 1}, 地址 0x${block.address.toRadixString(16).toUpperCase()}');
+
+        try {
+          // 只发送数据，等待写入完成（不等待响应）
+          await debugService.sendDataFrameOnly(
+            address: block.address,
+            data: block.data,
+          );
+        } catch (e) {
+          addDebugLog(ref, '数据帧发送失败: $e');
+          // 继续发送下一块
+        }
+
+        // 等待发送间隔（除了最后一块）
+        if (i < dataBlocks.length - 1) {
+          await Future.delayed(Duration(milliseconds: sendInterval));
+        }
+      }
+
+      addDebugLog(ref, '连续发送完成');
+    } catch (e) {
+      addDebugLog(ref, '连续发送异常: $e');
+    } finally {
+      ref.read(isContinuousSendingProvider.notifier).state = false;
+      if (mounted) {
+        setState(() => _isDataFrameLoading = false);
+      }
+    }
+  }
+
+  /// 停止连续发送
+  void _stopContinuousSending() {
+    ref.read(isContinuousSendingProvider.notifier).state = false;
+    addDebugLog(ref, '请求停止连续发送');
   }
 }

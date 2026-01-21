@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/parameter.dart';
 import '../../domain/entities/parameter_group.dart';
@@ -56,10 +57,10 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
             _parameterGroup = group;
             _isLoading = false;
             
-            // 初始化控制器
+            // 初始化控制器（只使用整数）
             for (var param in group.parameters) {
               _controllers[param.key] = TextEditingController(
-                text: param.defaultValue.toStringAsFixed(param.precision),
+                text: param.defaultValue.toInt().toString(),
               );
             }
           });
@@ -97,14 +98,10 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
             _showMessage(failure.toUserMessage(), isError: true);
           },
           (parameterGroup) {
-            // 更新控制器的值
+            // 更新控制器的值（只使用整数）
             for (var param in parameterGroup.parameters) {
               if (_controllers.containsKey(param.key)) {
-                _controllers[param.key]?.text = param.value.toStringAsFixed(
-                  _parameterGroup!.parameters
-                      .firstWhere((p) => p.key == param.key)
-                      .precision,
-                );
+                _controllers[param.key]?.text = param.value.toInt().toString();
               }
             }
             _showMessage('读取参数成功');
@@ -130,22 +127,24 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
 
     if (_parameterGroup == null) return;
 
-    // 收集所有参数值
+    // 收集所有参数值（只使用整数）
     final values = <String, double>{};
 
     // 验证所有参数
     for (var param in _parameterGroup!.parameters) {
       final text = _controllers[param.key]?.text ?? '';
-      final value = double.tryParse(text);
+      final intValue = int.tryParse(text);
 
-      if (value == null) {
-        _showMessage('${param.name} 的值无效', isError: true);
+      if (intValue == null) {
+        _showMessage('${param.name} 的值无效（必须是整数）', isError: true);
         return;
       }
 
+      final value = intValue.toDouble();
+
       if (!param.isValid(value)) {
         _showMessage(
-          '${param.name} 的值超出范围 (${param.min}-${param.max})',
+          '${param.name} 的值超出范围 (${param.min.toInt()}-${param.max.toInt()})',
           isError: true,
         );
         return;
@@ -477,13 +476,14 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
                   Expanded(
                     child: TextField(
                       controller: _controllers[param.key],
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,  // 只允许数字
+                      ],
                       decoration: InputDecoration(
-                        labelText: '值',
+                        labelText: '值（整数）',
                         suffixText: param.unit,
-                        helperText: '范围: ${param.min} - ${param.max}',
+                        helperText: '范围: ${param.min.toInt()} - ${param.max.toInt()}',
                         border: const OutlineInputBorder(),
                       ),
                     ),

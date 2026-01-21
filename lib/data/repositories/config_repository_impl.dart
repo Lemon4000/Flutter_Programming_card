@@ -13,13 +13,8 @@ class ConfigRepositoryImpl implements ConfigRepository {
       final jsonString = await rootBundle.loadString('assets/config/protocol.json');
       final json = jsonDecode(jsonString) as Map<String, dynamic>;
       
-      return Right(ProtocolConfig(
-        preamble: json['preamble'] as String,
-        checksumType: ChecksumType.fromString(json['checksumType'] as String),
-        baudRate: json['baudRate'] as int,
-        txStart: json['txStart'] as String,
-        rxStart: json['rxStart'] as String,
-      ));
+      // 使用 fromJson 方法来解析配置，确保字段名称一致
+      return Right(ProtocolConfig.fromJson(json));
     } catch (e) {
       return Left(ConfigFailure('加载协议配置失败: $e'));
     }

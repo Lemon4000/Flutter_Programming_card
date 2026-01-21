@@ -3,7 +3,7 @@ import 'package:dartz/dartz.dart';
 import '../../core/errors/failures.dart';
 import '../../core/utils/hex_parser.dart';
 import '../../core/utils/crc_calculator.dart';
-import '../datasources/bluetooth_datasource.dart';
+
 import '../protocol/frame_builder.dart';
 import '../protocol/frame_parser.dart';
 import '../protocol/protocol_config.dart';
@@ -28,7 +28,7 @@ enum FlashState {
 ///
 /// 负责管理完整的固件烧录状态机
 class FlashWorker {
-  final BluetoothDatasource bluetoothDatasource;
+  final Future<void> Function(List<int>) writeData;  // 写入数据函数
   final FrameBuilder frameBuilder;
   final FrameParser frameParser;
   final ProtocolConfig protocolConfig;
@@ -57,7 +57,7 @@ class FlashWorker {
   DateTime? _startTime;
 
   FlashWorker({
-    required this.bluetoothDatasource,
+    required this.writeData,
     required this.frameBuilder,
     required this.frameParser,
     required this.protocolConfig,
@@ -207,7 +207,7 @@ class FlashWorker {
 
       final frame = frameBuilder.buildInitFrame();
       onTxData?.call(frame);  // 记录发送数据
-      bluetoothDatasource.write(frame);
+      writeData(frame);
 
       // 只在第一次发送时转换状态
       if (!isRetry) {
@@ -263,7 +263,7 @@ class FlashWorker {
 
     final frame = frameBuilder.buildEraseFrame(eraseBlocks);
     onTxData?.call(frame);  // 记录发送数据
-    bluetoothDatasource.write(frame);
+    writeData(frame);
 
     _transitionTo(FlashState.waitErase);
     // 激进优化：擦除操作减少超时到2秒
@@ -311,7 +311,7 @@ class FlashWorker {
     }
 
     final frame = frameBuilder.buildFlashDataFrame(block.address, block.data);
-    bluetoothDatasource.write(frame, withoutResponse: false);
+    writeData(frame);
 
     _transitionTo(FlashState.waitProgram);
     // 优化：256字节数据块传输快，超时时间设为20ms
@@ -405,7 +405,7 @@ class FlashWorker {
 
     final frame = frameBuilder.buildFlashVerifyFrame(_totalCrc);
     onTxData?.call(frame);  // 记录发送数据
-    bluetoothDatasource.write(frame);
+    writeData(frame);
 
     _transitionTo(FlashState.waitVerify);
     // 激进优化：验证命令很小，超时时间减少到500ms

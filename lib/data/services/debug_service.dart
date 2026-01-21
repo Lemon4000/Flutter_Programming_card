@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:async';
 import '../models/debug_response.dart';
 import '../protocol/frame_builder.dart';
 import '../protocol/frame_parser.dart';
@@ -329,6 +330,25 @@ class DebugService {
   void _cancelTimeout() {
     _timeoutTimer?.cancel();
     _timeoutTimer = null;
+  }
+
+  /// 只发送数据帧，不等待响应
+  ///
+  /// 用于连续发送模式，只等待数据写入蓝牙缓冲区
+  Future<void> sendDataFrameOnly({
+    required int address,
+    required List<int> data,
+  }) async {
+    try {
+      // 构建数据帧
+      final frame = frameBuilder.buildFlashDataFrame(address, data);
+
+      // 发送（等待写入蓝牙缓冲区完成）
+      await bluetoothDatasource.write(frame);
+    } catch (e) {
+      onLog('发送数据帧失败: $e');
+      rethrow;
+    }
   }
 
   /// 释放资源

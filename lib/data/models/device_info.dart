@@ -47,7 +47,7 @@ class DeviceInfo {
     }
 
     return DeviceInfo(
-      id: result.device.remoteId.toString(),
+      id: result.device.remoteId.toString().toLowerCase(), // 统一转换为小写
       name: deviceName,
       rssi: result.rssi,
       device: result.device,
@@ -65,12 +65,12 @@ class DeviceInfo {
 
     // 如果名称为空，使用 MAC 地址作为标识
     if (deviceName.isEmpty) {
-      final macAddress = device.remoteId.toString();
+      final macAddress = device.remoteId.toString().toLowerCase(); // 统一转换为小写
       deviceName = '未知设备 ($macAddress)';
     }
 
     return DeviceInfo(
-      id: device.remoteId.toString(),
+      id: device.remoteId.toString().toLowerCase(), // 统一转换为小写
       name: deviceName,
       rssi: rssi,
       device: device,

@@ -33,12 +33,12 @@ class FrameBuilder {
 
   /// 构建写入帧
   /// 
-  /// 格式: [前导码]!WRITEA0:14.00,A1:60.00;[校验值]
+  /// 格式: [前导码]!WRITEA0:14,A1:60;[校验值]（整数格式）
   /// 
   /// 参数:
   /// - [group]: 参数组名称
   /// - [values]: 参数键值对 {A0: 14.0, A1: 60.0}
-  /// - [precisionMap]: 精度映射 {A0: 2, A1: 2}
+  /// - [precisionMap]: 精度映射（已废弃，保留兼容性）
   List<int> buildWriteFrame(
     String group,
     Map<String, double> values,
@@ -52,16 +52,16 @@ class FrameBuilder {
         return numA.compareTo(numB);
       });
 
-    // 构建参数字符串: A0:14.00,A1:60.00
+    // 构建参数字符串: A0:14,A1:60（整数格式）
     final parts = <String>[];
     for (var key in sortedKeys) {
       final value = values[key]!;
-      final precision = precisionMap[key] ?? 2;
-      final valueStr = value.toStringAsFixed(precision);
+      // 转换为整数格式（不使用小数点）
+      final valueStr = value.toInt().toString();
       parts.add('$key:$valueStr');
     }
 
-    // 构建载荷: !WRITEA0:14.00,A1:60.00;
+    // 构建载荷: !WRITEA0:14,A1:60;（整数格式）
     final payload = '${config.txStart}WRITE${parts.join(',')};';
     final payloadBytes = payload.codeUnits;
     

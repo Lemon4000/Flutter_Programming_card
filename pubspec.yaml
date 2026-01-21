@@ -43,6 +43,9 @@ dependencies:
   # 蓝牙通信
   flutter_blue_plus: ^1.31.0
 
+  # 串口通信
+  flutter_libserialport: ^0.4.0
+
   # 权限管理
   permission_handler: ^11.0.0
 
@@ -55,6 +58,7 @@ dependencies:
 
   # 函数式编程
   dartz: ^0.10.1
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:
@@ -114,3 +118,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 本地包覆盖 - 修复 Linux BLE 扫描问题
+dependency_overrides:
+  flutter_blue_plus_linux:
+    path: ./packages/flutter_blue_plus_linux-7.0.3

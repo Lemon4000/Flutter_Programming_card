@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/device.dart';
+import '../../data/datasources/communication_datasource.dart';
 import '../providers/providers.dart';
 import '../../core/utils/permission_helper.dart';
 
@@ -18,6 +19,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   List<Device> _devices = [];
   bool _isScanning = false;
   String? _errorMessage;
+  List<String> _availableSerialPorts = [];
+  bool _isLoadingPorts = false;
 
   /// 对设备列表排序
   /// 1. 含有 "CYW" 和 "Surpass" 的设备置顶（不需要连续）
@@ -243,8 +246,94 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
+  /// 获取可用串口列表
+  void _loadSerialPorts() async {
+    setState(() {
+      _isLoadingPorts = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final serialPortDatasource = ref.read(serialPortDatasourceProvider);
+      final ports = serialPortDatasource.getAvailablePorts();
+
+      if (mounted) {
+        setState(() {
+          _availableSerialPorts = ports;
+          _isLoadingPorts = false;
+          if (ports.isEmpty) {
+            _errorMessage = '未找到可用的串口设备。请确保USB转串口设备已连接。';
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = '获取串口列表失败: $e';
+          _isLoadingPorts = false;
+        });
+      }
+    }
+  }
+
+  /// 连接串口
+  Future<void> _connectToSerialPort(String portName) async {
+    final serialPortDatasource = ref.read(serialPortDatasourceProvider);
+    final baudRate = ref.read(serialPortBaudRateProvider);
+
+    // 显示连接对话框
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Row(
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Text('正在连接串口 ($baudRate bps)...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // 使用用户选择的波特率
+      await serialPortDatasource.connect(portName, baudRate: baudRate);
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 关闭对话框
+
+      // 更新全局连接状态
+      ref.read(connectionStateProvider.notifier).state = true;
+      ref.read(connectedDeviceIdProvider.notifier).state = portName;
+      ref.read(connectedDeviceNameProvider.notifier).state = '串口: $portName';
+      ref.read(selectedSerialPortProvider.notifier).state = portName;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已连接到串口 $portName'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // 关闭对话框
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('连接串口失败: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final communicationType = ref.watch(communicationTypeProvider);
     return Column(
       children: [
         // 扫描控制区域
@@ -262,31 +351,145 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           ),
           child: Column(
             children: [
+              // 通信类型选择
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.settings_input_composite, size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      '通信方式:',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: SegmentedButton<CommunicationType>(
+                        segments: const [
+                          ButtonSegment(
+                            value: CommunicationType.bluetooth,
+                            label: Text('蓝牙'),
+                            icon: Icon(Icons.bluetooth, size: 18),
+                          ),
+                          ButtonSegment(
+                            value: CommunicationType.serialPort,
+                            label: Text('串口'),
+                            icon: Icon(Icons.usb, size: 18),
+                          ),
+                        ],
+                        selected: {communicationType},
+                        onSelectionChanged: (Set<CommunicationType> newSelection) {
+                          ref.read(communicationTypeProvider.notifier).state = newSelection.first;
+                          // 切换到串口时自动加载串口列表
+                          if (newSelection.first == CommunicationType.serialPort) {
+                            _loadSerialPorts();
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              
+              // 串口波特率选择（仅在串口模式显示）
+              if (communicationType == CommunicationType.serialPort) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.speed, size: 20),
+                      const SizedBox(width: 8),
+                      const Text(
+                        '波特率:',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: DropdownButton<int>(
+                          value: ref.watch(serialPortBaudRateProvider),
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: 9600, child: Text('9600 bps')),
+                            DropdownMenuItem(value: 19200, child: Text('19200 bps')),
+                            DropdownMenuItem(value: 38400, child: Text('38400 bps')),
+                            DropdownMenuItem(value: 57600, child: Text('57600 bps')),
+                            DropdownMenuItem(value: 115200, child: Text('115200 bps (推荐)')),
+                            DropdownMenuItem(value: 230400, child: Text('230400 bps')),
+                            DropdownMenuItem(value: 460800, child: Text('460800 bps')),
+                            DropdownMenuItem(value: 921600, child: Text('921600 bps')),
+                            DropdownMenuItem(value: 2000000, child: Text('2000000 bps (高速)')),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              ref.read(serialPortBaudRateProvider.notifier).state = value;
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              
+              // 蓝牙扫描按钮或串口刷新按钮
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _isScanning ? _stopScan : _startScan,
-                      icon: Icon(_isScanning ? Icons.stop : Icons.bluetooth_searching),
-                      label: Text(
-                        _isScanning ? '停止扫描' : '开始扫描',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: _isScanning
-                            ? Colors.red.shade400
-                            : Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        elevation: _isScanning ? 0 : 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+                    child: communicationType == CommunicationType.bluetooth
+                        ? ElevatedButton.icon(
+                            onPressed: _isScanning ? _stopScan : _startScan,
+                            icon: Icon(_isScanning ? Icons.stop : Icons.bluetooth_searching),
+                            label: Text(
+                              _isScanning ? '停止扫描' : '开始扫描',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: _isScanning
+                                  ? Colors.red.shade400
+                                  : Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              elevation: _isScanning ? 0 : 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          )
+                        : ElevatedButton.icon(
+                            onPressed: _isLoadingPorts ? null : _loadSerialPorts,
+                            icon: Icon(_isLoadingPorts ? Icons.hourglass_empty : Icons.refresh),
+                            label: Text(
+                              _isLoadingPorts ? '正在加载...' : '刷新串口列表',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
                   ),
                 ],
               ),
@@ -308,7 +511,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        '提示：设备按信号强度排序。"未知设备"表示设备未广播名称，请尝试连接后查看。',
+                        communicationType == CommunicationType.bluetooth
+                            ? '提示：设备按信号强度排序。"未知设备"表示设备未广播名称，请尝试连接后查看。'
+                            : '提示：选择USB转串口设备进行连接。默认波特率为2000000 bps。',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.blue.shade800,
@@ -381,213 +586,407 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ),
           ),
 
-        // 设备列表
+        // 设备列表或串口列表
         Expanded(
-          child: _devices.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        _isScanning ? Icons.bluetooth_searching : Icons.bluetooth_disabled,
-                        size: 80,
-                        color: _isScanning ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+          child: communicationType == CommunicationType.bluetooth
+              ? _buildBluetoothDeviceList()
+              : _buildSerialPortList(),
+        ),
+      ],
+    );
+  }
+
+  /// 构建蓝牙设备列表
+  Widget _buildBluetoothDeviceList() {
+    return _devices.isEmpty
+        ? Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _isScanning ? Icons.bluetooth_searching : Icons.bluetooth_disabled,
+                  size: 80,
+                  color: _isScanning ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  _isScanning ? '正在扫描设备...' : '点击开始扫描按钮搜索设备',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                if (_isScanning) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )
+        : ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: _devices.length,
+            itemBuilder: (context, index) {
+              final device = _devices[index];
+              return Container(
+                margin: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Card(
+                  elevation: 0,
+                  margin: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: device.isConnected
+                          ? Colors.green.withOpacity(0.3)
+                          : Colors.grey.shade200,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    leading: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: device.isConnected
+                            ? Colors.green.withOpacity(0.1)
+                            : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        _isScanning ? '正在扫描设备...' : '点击开始扫描按钮搜索设备',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      child: Icon(
+                        device.isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
+                        color: device.isConnected
+                            ? Colors.green.shade700
+                            : Theme.of(context).colorScheme.primary,
+                        size: 28,
                       ),
-                      if (_isScanning) ...[
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: Text(
+                      device.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 6),
+                        // 只在名称不包含MAC地址时才显示MAC地址
+                        if (!device.name.contains(device.id))
+                          Row(
+                            children: [
+                              Icon(Icons.fingerprint, size: 14, color: Colors.grey[600]),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  device.id,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                    fontFamily: 'monospace',
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              device.rssi > -70
+                                  ? Icons.signal_cellular_alt
+                                  : device.rssi > -85
+                                      ? Icons.signal_cellular_alt_2_bar
+                                      : Icons.signal_cellular_alt_1_bar,
+                              size: 14,
+                              color: device.rssi > -70
+                                  ? Colors.green
+                                  : device.rssi > -85
+                                      ? Colors.orange
+                                      : Colors.red,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${device.rssi} dBm',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: device.rssi > -70
+                                    ? Colors.green
+                                    : device.rssi > -85
+                                        ? Colors.orange
+                                        : Colors.red,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
+                    ),
+                    isThreeLine: true,
+                    trailing: device.isConnected
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.green.withOpacity(0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.check_circle, size: 16, color: Colors.white),
+                                SizedBox(width: 4),
+                                Text(
+                                  '已连接',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Tooltip(
+                            message: '连接到 ${device.name}',
+                            child: ElevatedButton(
+                              onPressed: () => _connectToDevice(device),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                              ),
+                              child: const Text(
+                                '连接',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              );
+            },
+          );
+  }
+
+  /// 构建串口列表
+  Widget _buildSerialPortList() {
+    final selectedPort = ref.watch(selectedSerialPortProvider);
+    final baudRate = ref.watch(serialPortBaudRateProvider);
+    
+    if (_isLoadingPorts) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在加载串口列表...'),
+          ],
+        ),
+      );
+    }
+
+    if (_availableSerialPorts.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.usb_off,
+              size: 80,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '未找到可用的串口设备',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '请连接USB转串口设备后点击刷新',
+              style: TextStyle(
+                color: Colors.grey.shade500,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      itemCount: _availableSerialPorts.length,
+      itemBuilder: (context, index) {
+        final portName = _availableSerialPorts[index];
+        final isConnected = selectedPort == portName && ref.watch(connectionStateProvider);
+        
+        return Container(
+          margin: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 6,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Card(
+            elevation: 0,
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: isConnected
+                    ? Colors.green.withOpacity(0.3)
+                    : Colors.grey.shade200,
+                width: 1.5,
+              ),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isConnected
+                      ? Colors.green.withOpacity(0.1)
+                      : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isConnected ? Icons.usb_rounded : Icons.usb,
+                  color: isConnected
+                      ? Colors.green.shade700
+                      : Theme.of(context).colorScheme.primary,
+                  size: 28,
+                ),
+              ),
+              title: Text(
+                portName,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                  fontFamily: 'monospace',
+                ),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(Icons.speed, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        '波特率: $baudRate bps',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _devices.length,
-                  itemBuilder: (context, index) {
-                    final device = _devices[index];
-                    return Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 6,
-                      ),
+                ],
+              ),
+              trailing: isConnected
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                        ),
+                        borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
-                            blurRadius: 8,
+                            color: Colors.green.withOpacity(0.3),
+                            blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
-                      child: Card(
-                        elevation: 0,
-                        margin: EdgeInsets.zero,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: device.isConnected
-                                ? Colors.green.withOpacity(0.3)
-                                : Colors.grey.shade200,
-                            width: 1.5,
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, size: 16, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            '已连接',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Tooltip(
+                      message: '连接到 $portName',
+                      child: ElevatedButton(
+                        onPressed: () => _connectToSerialPort(portName),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
                           ),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          leading: Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: device.isConnected
-                                  ? Colors.green.withOpacity(0.1)
-                                  : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              device.isConnected ? Icons.bluetooth_connected : Icons.bluetooth,
-                              color: device.isConnected
-                                  ? Colors.green.shade700
-                                  : Theme.of(context).colorScheme.primary,
-                              size: 28,
-                            ),
-                          ),
-                          title: Text(
-                            device.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 6),
-                              // 只在名称不包含MAC地址时才显示MAC地址
-                              if (!device.name.contains(device.id))
-                                Row(
-                                  children: [
-                                    Icon(Icons.fingerprint, size: 14, color: Colors.grey[600]),
-                                    const SizedBox(width: 4),
-                                    Expanded(
-                                      child: Text(
-                                        device.id,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                          fontFamily: 'monospace',
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    device.rssi > -70
-                                        ? Icons.signal_cellular_alt
-                                        : device.rssi > -85
-                                            ? Icons.signal_cellular_alt_2_bar
-                                            : Icons.signal_cellular_alt_1_bar,
-                                    size: 14,
-                                    color: device.rssi > -70
-                                        ? Colors.green
-                                        : device.rssi > -85
-                                            ? Colors.orange
-                                            : Colors.red,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    '${device.rssi} dBm',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: device.rssi > -70
-                                          ? Colors.green
-                                          : device.rssi > -85
-                                              ? Colors.orange
-                                              : Colors.red,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          isThreeLine: true,
-                          trailing: device.isConnected
-                              ? Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.green.withOpacity(0.3),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.check_circle, size: 16, color: Colors.white),
-                                      SizedBox(width: 4),
-                                      Text(
-                                        '已连接',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              : Tooltip(
-                                  message: '连接到 ${device.name}',
-                                  child: ElevatedButton(
-                                    onPressed: () => _connectToDevice(device),
-                                    style: ElevatedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      '连接',
-                                      style: TextStyle(fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ),
+                        child: const Text(
+                          '连接',
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
-                    );
-                  },
-                ),
-        ),
-      ],
+                    ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -60,6 +60,18 @@ final debugEraseBlockCountProvider = StateProvider<int>((ref) => 1);
 /// 验证 CRC 值
 final debugVerifyCrcProvider = StateProvider<int>((ref) => 0);
 
+/// 连续发送模式（不等待响应）
+final continuousSendModeProvider = StateProvider<bool>((ref) => false);
+
+/// 发送间隔（毫秒）
+final sendIntervalProvider = StateProvider<int>((ref) => 100);
+
+/// 数据帧自动递增
+final autoIncrementBlockProvider = StateProvider<bool>((ref) => true);
+
+/// 是否正在连续发送
+final isContinuousSendingProvider = StateProvider<bool>((ref) => false);
+
 // ============================================================================
 // 响应状态 Providers
 // ============================================================================

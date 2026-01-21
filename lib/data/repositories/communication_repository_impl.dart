@@ -9,6 +9,7 @@ import '../../domain/entities/parameter_group_entity.dart';
 import '../../domain/repositories/communication_repository.dart';
 import '../../presentation/providers/log_provider.dart';
 import '../datasources/bluetooth_datasource.dart';
+import '../datasources/serial_port_datasource.dart';
 import '../models/flash_progress.dart';
 import '../protocol/frame_builder.dart';
 import '../protocol/frame_parser.dart';
@@ -17,7 +18,8 @@ import '../services/flash_worker.dart';
 
 /// 通信仓库实现
 class CommunicationRepositoryImpl implements CommunicationRepository {
-  final BluetoothDatasource _bluetoothDatasource;
+  final BluetoothDatasource? _bluetoothDatasource;
+  final SerialPortDatasource? _serialPortDatasource;
   final ProtocolConfig _protocolConfig;
   final Ref _ref; // 添加Ref以访问Provider
   late final FrameBuilder _frameBuilder;
@@ -36,24 +38,52 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
   // 用于等待响应的Completer
   Completer<ParsedParameterData>? _parameterCompleter;
   Completer<ParsedFlashResponse>? _flashCompleter;
+  Completer<bool>? _writeParameterCompleter;
 
   // 日志流控制器
   final _logController = StreamController<String>.broadcast();
 
-  CommunicationRepositoryImpl(
-    this._bluetoothDatasource,
+  /// 构造函数 - 支持蓝牙或串口
+  CommunicationRepositoryImpl.bluetooth(
+    BluetoothDatasource bluetoothDatasource,
     this._protocolConfig,
     this._ref,
-  ) {
+  )   : _bluetoothDatasource = bluetoothDatasource,
+        _serialPortDatasource = null {
     _frameBuilder = FrameBuilder(_protocolConfig);
     _frameParser = FrameParser(_protocolConfig);
 
     // 监听数据流
-    _dataSubscription = _bluetoothDatasource.dataStream.listen(_handleData);
+    _dataSubscription = bluetoothDatasource.dataStream.listen(_handleData);
+  }
+
+  /// 构造函数 - 串口
+  CommunicationRepositoryImpl.serialPort(
+    SerialPortDatasource serialPortDatasource,
+    this._protocolConfig,
+    this._ref,
+  )   : _bluetoothDatasource = null,
+        _serialPortDatasource = serialPortDatasource {
+    _frameBuilder = FrameBuilder(_protocolConfig);
+    _frameParser = FrameParser(_protocolConfig);
+
+    // 监听数据流
+    _dataSubscription = serialPortDatasource.dataStream.listen(_handleData);
   }
 
   @override
   Stream<String> get logStream => _logController.stream;
+
+  /// 写入数据到当前数据源
+  Future<void> _writeData(List<int> data) async {
+    if (_bluetoothDatasource != null) {
+      await _bluetoothDatasource.write(data);
+    } else if (_serialPortDatasource != null) {
+      await _serialPortDatasource.write(data);
+    } else {
+      throw Exception('没有可用的数据源');
+    }
+  }
 
   /// 处理接收到的数据
   void _handleData(List<int> data) {
@@ -94,10 +124,17 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
 
   /// 处理完整的帧
   void _processFrame(List<int> frame) {
-    // 尝试解析为参数响应
+    // 尝试解析为参数读取响应
     final paramData = _frameParser.parseParameterResponse(frame);
     if (paramData != null && _parameterCompleter != null && !_parameterCompleter!.isCompleted) {
       _parameterCompleter!.complete(paramData);
+      return;
+    }
+
+    // 尝试解析为参数写入响应
+    final writeResult = _frameParser.parseWriteParameterResponse(frame);
+    if (writeResult != null && _writeParameterCompleter != null && !_writeParameterCompleter!.isCompleted) {
+      _writeParameterCompleter!.complete(writeResult);
       return;
     }
 
@@ -129,7 +166,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       _parameterCompleter = Completer<ParsedParameterData>();
 
       // 发送帧
-      await _bluetoothDatasource.write(frame);
+      await _writeData(frame);
 
       // 等待响应（5秒超时）
       final response = await _parameterCompleter!.future
@@ -186,17 +223,36 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       // 记录发送的数据到日志
       _ref.read(logProvider.notifier).addTxLog(frame);
 
+      // 创建Completer等待响应
+      _writeParameterCompleter = Completer<bool>();
+
       // 发送帧
-      await _bluetoothDatasource.write(frame);
+      await _writeData(frame);
 
-      // TODO: 等待写入确认响应
-      await Future.delayed(const Duration(milliseconds: 500));
+      // 等待写入确认响应（带超时）
+      final result = await _writeParameterCompleter!.future.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          _addLog('写入参数响应超时');
+          return false;
+        },
+      );
 
-      _addLog('写入参数成功');
-      return const Right(true);
+      if (result) {
+        _addLog('写入参数成功（CRC校验通过）');
+        return const Right(true);
+      } else {
+        _addLog('写入参数失败（设备返回错误）');
+        return const Left(ProtocolFailure('写入参数失败'));
+      }
+    } on TimeoutException {
+      _addLog('写入参数超时');
+      return const Left(TimeoutFailure('写入参数超时'));
     } catch (e) {
       _addLog('写入参数失败: $e');
       return Left(ProtocolFailure('写入参数失败: $e'));
+    } finally {
+      _writeParameterCompleter = null;
     }
   }
 
@@ -213,7 +269,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
 
       // 创建 FlashWorker
       _flashWorker = FlashWorker(
-        bluetoothDatasource: _bluetoothDatasource,
+        writeData: _writeData,
         frameBuilder: _frameBuilder,
         frameParser: _frameParser,
         protocolConfig: _protocolConfig,
