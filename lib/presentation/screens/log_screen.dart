@@ -113,12 +113,12 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                 end: Alignment.bottomCenter,
                 colors: [
                   Theme.of(context).colorScheme.surface,
-                  Theme.of(context).colorScheme.surface.withValues(alpha: 0.95),
+                  Theme.of(context).colorScheme.surface.withOpacity(0.95),
                 ],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
+                  color: Colors.black.withOpacity(0.08),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -234,13 +234,13 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               gradient: LinearGradient(
                                 colors: [
                                   Theme.of(context).colorScheme.primaryContainer,
-                                  Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.7),
+                                  Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -325,7 +325,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.blue.withValues(alpha: 0.2),
+                                    color: Colors.blue.withOpacity(0.2),
                                     blurRadius: 20,
                                     offset: const Offset(0, 10),
                                   ),
@@ -351,7 +351,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               borderRadius: BorderRadius.circular(16),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
+                                  color: Colors.black.withOpacity(0.05),
                                   blurRadius: 10,
                                   offset: const Offset(0, 4),
                                 ),
@@ -438,8 +438,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
             child: InkWell(
               onTap: onTap,
               borderRadius: BorderRadius.circular(24),
-              splashColor: color.withValues(alpha: 0.3),
-              highlightColor: color.withValues(alpha: 0.1),
+              splashColor: color.withOpacity(0.3),
+              highlightColor: color.withOpacity(0.1),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(
@@ -448,8 +448,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
-                            color.withValues(alpha: 0.2),
-                            color.withValues(alpha: 0.1),
+                            color.withOpacity(0.2),
+                            color.withOpacity(0.1),
                           ],
                         )
                       : null,
@@ -462,13 +462,13 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                   boxShadow: selected
                       ? [
                           BoxShadow(
-                            color: color.withValues(alpha: 0.3),
+                            color: color.withOpacity(0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                             spreadRadius: 0,
                           ),
                           BoxShadow(
-                            color: color.withValues(alpha: 0.1),
+                            color: color.withOpacity(0.1),
                             blurRadius: 20,
                             offset: const Offset(0, 8),
                             spreadRadius: 2,
@@ -476,7 +476,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                         ]
                       : [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 4,
                             offset: const Offset(0, 2),
                           ),
@@ -497,8 +497,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               shape: BoxShape.circle,
                               gradient: RadialGradient(
                                 colors: [
-                                  color.withValues(alpha: 0.3),
-                                  color.withValues(alpha: 0.0),
+                                  color.withOpacity(0.3),
+                                  color.withOpacity(0.0),
                                 ],
                               ),
                             ),
@@ -571,8 +571,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                             shape: BoxShape.circle,
                             gradient: RadialGradient(
                               colors: [
-                                Colors.red.withValues(alpha: 0.2 * (1 - pulseValue)),
-                                Colors.red.withValues(alpha: 0.0),
+                                Colors.red.withOpacity(0.2 * (1 - pulseValue)),
+                                Colors.red.withOpacity(0.0),
                               ],
                             ),
                           ),
@@ -602,13 +602,13 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                         boxShadow: hasLogs
                             ? [
                                 BoxShadow(
-                                  color: Colors.red.withValues(alpha: 0.4),
+                                  color: Colors.red.withOpacity(0.4),
                                   blurRadius: 12,
                                   offset: const Offset(0, 4),
                                   spreadRadius: 0,
                                 ),
                                 BoxShadow(
-                                  color: Colors.red.withValues(alpha: 0.2),
+                                  color: Colors.red.withOpacity(0.2),
                                   blurRadius: 20,
                                   offset: const Offset(0, 8),
                                   spreadRadius: 2,
@@ -616,7 +616,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                               ]
                             : [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.1),
+                                  color: Colors.black.withOpacity(0.1),
                                   blurRadius: 4,
                                   offset: const Offset(0, 2),
                                 ),
@@ -669,24 +669,24 @@ class _LogScreenState extends ConsumerState<LogScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              color.withValues(alpha: 0.08),
-              color.withValues(alpha: 0.03),
+              color.withOpacity(0.08),
+              color.withOpacity(0.03),
             ],
           ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: color.withValues(alpha: 0.25),
+            color: color.withOpacity(0.25),
             width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: color.withValues(alpha: 0.15),
+              color: color.withOpacity(0.15),
               blurRadius: 12,
               offset: const Offset(0, 4),
               spreadRadius: 0,
             ),
             BoxShadow(
-              color: Colors.white.withValues(alpha: 0.5),
+              color: Colors.white.withOpacity(0.5),
               blurRadius: 8,
               offset: const Offset(-2, -2),
               spreadRadius: 0,
@@ -697,8 +697,8 @@ class _LogScreenState extends ConsumerState<LogScreen> {
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            splashColor: color.withValues(alpha: 0.2),
-            highlightColor: color.withValues(alpha: 0.1),
+            splashColor: color.withOpacity(0.2),
+            highlightColor: color.withOpacity(0.1),
             onTap: () {
               // 可选：点击展开详情或复制
             },
@@ -733,7 +733,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
                               BoxShadow(
-                                color: color.withValues(alpha: 0.4),
+                                color: color.withOpacity(0.4),
                                 blurRadius: 6,
                                 offset: const Offset(0, 3),
                               ),

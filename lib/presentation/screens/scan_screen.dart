@@ -253,7 +253,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+                Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
                 Theme.of(context).colorScheme.surface,
               ],
               begin: Alignment.topCenter,
@@ -430,7 +430,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
+                            color: Colors.black.withOpacity(0.05),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -443,7 +443,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                           borderRadius: BorderRadius.circular(16),
                           side: BorderSide(
                             color: device.isConnected
-                                ? Colors.green.withValues(alpha: 0.3)
+                                ? Colors.green.withOpacity(0.3)
                                 : Colors.grey.shade200,
                             width: 1.5,
                           ),
@@ -457,8 +457,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
                               color: device.isConnected
-                                  ? Colors.green.withValues(alpha: 0.1)
-                                  : Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5),
+                                  ? Colors.green.withOpacity(0.1)
+                                  : Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
@@ -543,7 +543,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                                     borderRadius: BorderRadius.circular(20),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.green.withValues(alpha: 0.3),
+                                        color: Colors.green.withOpacity(0.3),
                                         blurRadius: 4,
                                         offset: const Offset(0, 2),
                                       ),

@@ -1,3 +1,6 @@
+import '../../../core/utils/hex_parser.dart';
+import 'dart:io';
+
 /// 固件文件模型
 class FirmwareFile {
   /// 显示名称
@@ -18,6 +21,9 @@ class FirmwareFile {
   /// 是否为内置资源
   final bool isAsset;
 
+  /// 数据块列表（用于调试模式）
+  final List<FlashBlock>? dataBlocks;
+
   const FirmwareFile({
     required this.name,
     required this.path,
@@ -25,6 +31,7 @@ class FirmwareFile {
     this.version,
     this.description,
     this.isAsset = false,
+    this.dataBlocks,
   });
 
   /// 格式化文件大小显示
@@ -58,6 +65,33 @@ class FirmwareFile {
       path: filePath,
       size: fileSize,
       isAsset: false,
+    );
+  }
+
+  /// 从 HEX 文件加载（用于调试模式）
+  static Future<FirmwareFile> fromHexFile(String filePath, String fileName) async {
+    // 读取文件内容
+    final file = File(filePath);
+    final content = await file.readAsString();
+    final fileSize = await file.length();
+
+    // 解析 HEX 文件
+    final parser = HexParser();
+    final success = parser.parseContent(content);
+
+    if (!success) {
+      throw Exception('HEX 文件解析失败');
+    }
+
+    // 获取数据块
+    final blocks = parser.getDataBlocks(blockSize: 256);
+
+    return FirmwareFile(
+      name: fileName,
+      path: filePath,
+      size: fileSize,
+      isAsset: false,
+      dataBlocks: blocks,
     );
   }
 

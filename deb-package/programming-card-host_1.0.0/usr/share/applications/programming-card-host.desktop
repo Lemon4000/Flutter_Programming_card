@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=编程卡上位机
+Name[zh_CN]=编程卡上位机
+Comment=Flutter 编程卡上位机 - 蓝牙设备管理和固件烧录
+Comment[zh_CN]=Flutter 编程卡上位机 - 蓝牙设备管理和固件烧录
+Exec=/usr/bin/programming-card-host
+Icon=programming-card-host
+Terminal=false
+Categories=Utility;Development;
+Keywords=bluetooth;firmware;programming;
+StartupNotify=true

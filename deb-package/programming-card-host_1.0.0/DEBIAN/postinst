@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+echo "正在配置编程卡上位机..."
+
+# 检查 Waydroid 是否已安装
+if ! command -v waydroid &> /dev/null; then
+    echo "警告: 未检测到 Waydroid"
+    echo "请运行以下命令安装 Waydroid:"
+    echo "  sudo apt install waydroid"
+    echo ""
+    echo "或访问: https://waydro.id/"
+fi
+
+# 创建启动脚本的符号链接
+if [ -f /usr/share/programming-card-host/launch.sh ]; then
+    chmod +x /usr/share/programming-card-host/launch.sh
+fi
+
+echo "编程卡上位机安装完成！"
+echo ""
+echo "使用方法:"
+echo "  1. 确保 Waydroid 已安装并初始化"
+echo "  2. 运行: programming-card-host"
+echo "  或在应用菜单中搜索 '编程卡上位机'"
+echo ""
+
+exit 0

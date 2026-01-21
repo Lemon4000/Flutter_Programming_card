@@ -19,12 +19,6 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        cardTheme: const CardThemeData(
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16)),
-          ),
-        ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             elevation: 2,

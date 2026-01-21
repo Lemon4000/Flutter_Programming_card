@@ -183,7 +183,7 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.2),
+            Theme.of(context).colorScheme.primaryContainer.withOpacity(0.2),
             Theme.of(context).colorScheme.surface,
           ],
           begin: Alignment.topCenter,
@@ -529,7 +529,7 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
         color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 12,
             offset: const Offset(0, -4),
           ),
@@ -556,7 +556,7 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: selectedFirmware != null ? 4 : 0,
-          shadowColor: buttonColor.withValues(alpha: 0.4),
+          shadowColor: buttonColor.withOpacity(0.4),
         ),
       ),
     );

@@ -1,0 +1,14 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: programming-card-host
+Upstream-Contact: Claude Sonnet 4.5 <noreply@anthropic.com>
+Source: https://github.com/anthropics/claude-code
+
+Files: *
+Copyright: 2026 Claude Sonnet 4.5
+License: Proprietary
+ This software is proprietary and for internal use only.
+
+Files: debian/*
+Copyright: 2026 Claude Sonnet 4.5
+License: Proprietary
+ This software is proprietary and for internal use only.

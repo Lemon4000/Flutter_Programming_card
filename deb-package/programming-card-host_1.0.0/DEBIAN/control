@@ -1,0 +1,17 @@
+Package: programming-card-host
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: all
+Depends: waydroid | anbox
+Maintainer: Claude Sonnet 4.5 <noreply@anthropic.com>
+Description: 编程卡上位机 - Android 应用 (通过 Waydroid 运行)
+ Flutter 编程卡上位机应用，用于蓝牙设备管理、参数配置和固件烧录。
+ .
+ 本包包含 Android APK 和自动安装脚本，通过 Waydroid 在 Ubuntu 上运行。
+ .
+ 功能特性:
+  - 蓝牙设备扫描和连接
+  - 参数读取和写入
+  - 固件烧录 (支持可配置重试延迟)
+  - 通信日志查看

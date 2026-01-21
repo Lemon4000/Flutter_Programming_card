@@ -248,7 +248,7 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
               color: Theme.of(context).colorScheme.surface,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: Colors.black.withOpacity(0.05),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -416,7 +416,7 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -445,7 +445,7 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
                       gradient: LinearGradient(
                         colors: [
                           Theme.of(context).colorScheme.primaryContainer,
-                          Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.7),
+                          Theme.of(context).colorScheme.primaryContainer.withOpacity(0.7),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(8),

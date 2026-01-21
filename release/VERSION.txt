@@ -1,0 +1,39 @@
+编程卡上位机 v1.0.0
+=====================
+
+构建信息
+--------
+版本: v1.0.0
+日期: 2026-01-21
+构建者: Claude Sonnet 4.5
+Git 提交: 9489d32
+
+包含文件
+--------
+- programming-card-host-v1.0.0-android.apk (47MB)
+- README.md (使用说明)
+- VERSION.txt (本文件)
+
+新增功能
+--------
+✨ 编程阶段重试延迟可配置 (10-500ms)
+✨ 烧录设置对话框优化
+✨ 紧凑显示格式
+
+Bug 修复
+--------
+🐛 修复烧录中止后仍发送命令的问题
+🐛 添加状态转换保护机制
+🐛 改进重试逻辑的状态检查
+
+技术细节
+--------
+- Flutter: Stable Channel
+- Dart: 3.x
+- 构建模式: Release
+- 目标平台: Android (API 21+)
+- APK 大小: 47MB (优化后)
+
+校验信息
+--------
+文件: programming-card-host-v1.0.0-android.apk

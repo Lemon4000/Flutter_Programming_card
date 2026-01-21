@@ -5,6 +5,7 @@ import 'scan_screen.dart';
 import 'parameter_screen.dart';
 import 'flash_screen.dart';
 import 'log_screen.dart';
+import 'debug_screen.dart';
 import '../providers/providers.dart';
 import '../../core/utils/logger.dart';
 
@@ -25,6 +26,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     const ParameterScreen(), // 参数读写页面
     const FlashScreen(), // 烧录页面
     const LogScreen(), // 通信日志页面
+    const DebugScreen(), // 调试页面
   ];
 
   @override
@@ -139,12 +141,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.green.withValues(alpha: 0.4),
+                        color: Colors.green.withOpacity(0.4),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
                       BoxShadow(
-                        color: Colors.green.withValues(alpha: 0.2),
+                        color: Colors.green.withOpacity(0.2),
                         blurRadius: 20,
                         offset: const Offset(0, 8),
                         spreadRadius: 2,
@@ -190,7 +192,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.2),
+                                color: Colors.white.withOpacity(0.2),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Icon(Icons.close_rounded, size: 14, color: Colors.white),
@@ -214,12 +216,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               end: Alignment.bottomCenter,
               colors: [
                 Theme.of(context).colorScheme.surface,
-                Theme.of(context).colorScheme.surface.withValues(alpha: 0.95),
+                Theme.of(context).colorScheme.surface.withOpacity(0.95),
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
+                color: Colors.black.withOpacity(0.05),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -253,7 +255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: Colors.black.withOpacity(0.1),
               blurRadius: 12,
               offset: const Offset(0, -4),
             ),
@@ -290,6 +292,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               selectedIcon: _buildNavIcon(Icons.list_alt, true, 3),
               label: '日志',
             ),
+            NavigationDestination(
+              icon: _buildNavIcon(Icons.bug_report_outlined, false, 4),
+              selectedIcon: _buildNavIcon(Icons.bug_report, true, 4),
+              label: '调试',
+            ),
           ],
         ),
       ),
@@ -306,7 +313,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: isCurrentTab && isSelected
-            ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
+            ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
       ),
