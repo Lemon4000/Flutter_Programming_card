@@ -56,37 +56,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       return;
     }
 
-    // 检查平台支持 - Windows 不支持蓝牙
-    if (!kIsWeb && Platform.isWindows) {
-      setState(() {
-        _errorMessage = 'Windows 桌面版本不支持蓝牙功能。\n请使用串口连接或在 Android/iOS 设备上使用蓝牙功能。';
-        _isScanning = false;
-      });
-
-      // 显示提示对话框
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('不支持蓝牙'),
-            content: const Text(
-              'Windows 桌面版本不支持蓝牙功能。\n\n'
-              '请使用以下方式连接设备：\n\n'
-              '• 串口连接：点击"串口"标签页\n'
-              '• 蓝牙连接：在 Android 或 iOS 设备上使用',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('确定'),
-              ),
-            ],
-          ),
-        );
-      }
-      return;
-    }
-
     // 检查平台支持 - Linux 蓝牙功能受限
     if (!kIsWeb && Platform.isLinux) {
       setState(() {

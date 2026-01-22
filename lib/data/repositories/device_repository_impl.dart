@@ -7,23 +7,31 @@ import '../../core/errors/failures.dart';
 import '../../domain/entities/device.dart';
 import '../../domain/repositories/device_repository.dart';
 import '../datasources/bluetooth_datasource.dart';
+import '../datasources/cross_platform_bluetooth_datasource.dart';
 import '../models/device_info.dart';
 
 /// 设备仓库实现
 class DeviceRepositoryImpl implements DeviceRepository {
-  final BluetoothDatasource _bluetoothDatasource;
+  final BluetoothDatasource? _bluetoothDatasource;
+  final CrossPlatformBluetoothDatasource? _crossPlatformBluetoothDatasource;
   final Map<String, BluetoothDevice> _scannedDevices = {};
-  
+
   // 缓存设备名称，避免名称丢失
   final Map<String, String> _deviceNameCache = {};
-  
+
   // SharedPreferences 键
   static const String _deviceNameCacheKey = 'device_name_cache';
-  
+
   // 是否已加载缓存
   bool _cacheLoaded = false;
 
-  DeviceRepositoryImpl(this._bluetoothDatasource) {
+  DeviceRepositoryImpl.bluetooth(this._bluetoothDatasource)
+      : _crossPlatformBluetoothDatasource = null {
+    _loadDeviceNameCache();
+  }
+
+  DeviceRepositoryImpl.crossPlatform(this._crossPlatformBluetoothDatasource)
+      : _bluetoothDatasource = null {
     _loadDeviceNameCache();
   }
   
@@ -87,24 +95,28 @@ class DeviceRepositoryImpl implements DeviceRepository {
     if (!_cacheLoaded) {
       await _loadDeviceNameCache();
     }
-    
+
     print('开始扫描，当前缓存中有 ${_deviceNameCache.length} 个设备名称');
     if (_deviceNameCache.isNotEmpty) {
       print('缓存内容: $_deviceNameCache');
     }
-    
+
     try {
       bool cacheUpdated = false;
-      
-      await for (final scanResults
-          in _bluetoothDatasource.scanDevices(timeout: timeout)) {
+
+      // 选择数据源
+      final scanStream = _crossPlatformBluetoothDatasource != null
+          ? _crossPlatformBluetoothDatasource!.scanDevices(timeout: timeout)
+          : _bluetoothDatasource!.scanDevices(timeout: timeout);
+
+      await for (final scanResults in scanStream) {
         // 缓存扫描到的设备
         for (final result in scanResults) {
           _scannedDevices[result.device.remoteId.toString().toLowerCase()] = result.device; // 统一转换为小写
         }
 
-        // 获取已配对设备的名称映射
-        final bondedNames = _bluetoothDatasource.bondedDeviceNames;
+        // 获取已配对设备的名称映射（仅 flutter_blue_plus 支持）
+        final bondedNames = _bluetoothDatasource?.bondedDeviceNames ?? {};
 
         // 转换为领域实体
         final devices = scanResults

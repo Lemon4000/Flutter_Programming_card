@@ -375,6 +375,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_web_bluetooth:
+    dependency: transitive
+    description:
+      name: flutter_web_bluetooth
+      sha256: fcd03e2e5f82edcedcbc940f1b6a0635a50757374183254f447640886c53208e
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.4"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -913,6 +921,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.0"
+  universal_ble:
+    dependency: "direct main"
+    description:
+      name: universal_ble
+      sha256: "0dfbd6b64bff3ad61ed7a895c232530d9614e9b01ab261a74433a43267edb7f3"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.12.0"
   usb_serial:
     dependency: "direct main"
     description:

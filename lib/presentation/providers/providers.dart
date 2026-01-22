@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/bluetooth_datasource.dart';
+import '../../data/datasources/cross_platform_bluetooth_datasource.dart';
 import '../../data/datasources/serial_port_datasource.dart';
 import '../../data/datasources/cross_platform_serial_datasource.dart';
 import '../../data/datasources/communication_datasource.dart';
@@ -20,9 +21,14 @@ import '../../domain/usecases/write_parameters_usecase.dart';
 // 数据源 Providers
 // ============================================================================
 
-/// 蓝牙数据源 Provider
+/// 蓝牙数据源 Provider（非 Windows 平台）
 final bluetoothDatasourceProvider = Provider<BluetoothDatasource>((ref) {
   return BluetoothDatasource();
+});
+
+/// 跨平台蓝牙数据源 Provider（包括 Windows）
+final crossPlatformBluetoothDatasourceProvider = Provider<CrossPlatformBluetoothDatasource>((ref) {
+  return CrossPlatformBluetoothDatasource();
 });
 
 /// 串口数据源 Provider（桌面平台）
@@ -61,10 +67,10 @@ final protocolConfigProvider = FutureProvider<ProtocolConfig>((ref) async {
 // 仓库 Providers
 // ============================================================================
 
-/// 设备仓库 Provider
+/// 设备仓库 Provider（使用跨平台蓝牙）
 final deviceRepositoryProvider = Provider<DeviceRepository>((ref) {
-  final datasource = ref.watch(bluetoothDatasourceProvider);
-  return DeviceRepositoryImpl(datasource);
+  final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
+  return DeviceRepositoryImpl.crossPlatform(datasource);
 });
 
 /// 配置仓库 Provider
