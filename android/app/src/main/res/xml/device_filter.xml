@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- USB 转串口芯片常见的 VID/PID -->
+
+    <!-- CH340/CH341 系列 -->
+    <usb-device vendor-id="6790" product-id="29987" />  <!-- 0x1A86:0x7523 -->
+    <usb-device vendor-id="6790" product-id="21795" />  <!-- 0x1A86:0x5523 -->
+
+    <!-- FTDI 系列 -->
+    <usb-device vendor-id="1027" />  <!-- 0x0403:* FTDI 所有产品 -->
+
+    <!-- CP210x 系列 (Silicon Labs) -->
+    <usb-device vendor-id="4292" />  <!-- 0x10C4:* CP210x 所有产品 -->
+
+    <!-- PL2303 系列 (Prolific) -->
+    <usb-device vendor-id="1659" product-id="8963" />  <!-- 0x067B:0x2303 -->
+
+    <!-- CDC ACM 设备（通用 USB 串口） -->
+    <usb-device class="2" />  <!-- USB CDC class -->
+</resources>

@@ -43,7 +43,10 @@ dependencies:
   # 蓝牙通信
   flutter_blue_plus: ^1.31.0
 
-  # 串口通信
+  # USB 串口通信（Android）
+  usb_serial: ^0.5.2
+
+  # 串口通信（桌面平台）
   flutter_libserialport: ^0.4.0
 
   # 权限管理

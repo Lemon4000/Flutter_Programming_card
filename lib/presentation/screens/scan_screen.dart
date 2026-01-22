@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/device.dart';
 import '../../data/datasources/communication_datasource.dart';
+import '../../data/datasources/cross_platform_serial_datasource.dart';
 import '../providers/providers.dart';
 import '../../core/utils/permission_helper.dart';
 
@@ -19,8 +21,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   List<Device> _devices = [];
   bool _isScanning = false;
   String? _errorMessage;
-  List<String> _availableSerialPorts = [];
+  List<SerialDeviceInfo> _availableSerialDevices = [];
   bool _isLoadingPorts = false;
+  
+  // 添加 StreamSubscription 来管理扫描订阅
+  StreamSubscription? _scanSubscription;
 
   /// 对设备列表排序
   /// 1. 含有 "CYW" 和 "Surpass" 的设备置顶（不需要连续）
@@ -110,7 +115,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final scanUseCase = ref.read(scanDevicesUseCaseProvider);
 
     try {
-      scanUseCase().listen(
+      // 取消之前的订阅（如果存在）
+      await _scanSubscription?.cancel();
+      
+      // 创建新的订阅并保存
+      _scanSubscription = scanUseCase().listen(
         (result) {
           result.fold(
             (failure) {
@@ -164,6 +173,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   Future<void> _stopScan() async {
+    // 取消订阅
+    await _scanSubscription?.cancel();
+    _scanSubscription = null;
+    
     final scanUseCase = ref.read(scanDevicesUseCaseProvider);
     await scanUseCase.stop();
 
@@ -172,6 +185,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         _isScanning = false;
       });
     }
+  }
+  
+  @override
+  void dispose() {
+    // 清理资源
+    _scanSubscription?.cancel();
+    super.dispose();
   }
 
   void _connectToDevice(Device device) async {
@@ -254,15 +274,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     });
 
     try {
-      final serialPortDatasource = ref.read(serialPortDatasourceProvider);
-      final ports = serialPortDatasource.getAvailablePorts();
+      final serialDatasource = ref.read(crossPlatformSerialDatasourceProvider);
+      final devices = await serialDatasource.getAvailableDevices();
 
       if (mounted) {
         setState(() {
-          _availableSerialPorts = ports;
+          _availableSerialDevices = devices;
           _isLoadingPorts = false;
-          if (ports.isEmpty) {
-            _errorMessage = '未找到可用的串口设备。请确保USB转串口设备已连接。';
+          if (devices.isEmpty) {
+            _errorMessage = Platform.isAndroid
+                ? '未找到可用的USB设备。请确保USB OTG转串口设备已连接，并授予应用USB访问权限。'
+                : '未找到可用的串口设备。请确保USB转串口设备已连接。';
           }
         });
       }
@@ -277,8 +299,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   /// 连接串口
-  Future<void> _connectToSerialPort(String portName) async {
-    final serialPortDatasource = ref.read(serialPortDatasourceProvider);
+  Future<void> _connectToSerialPort(SerialDeviceInfo device) async {
+    // 使用 Provider 中的共享实例
+    final serialDatasource = ref.read(crossPlatformSerialDatasourceProvider);
     final baudRate = ref.read(serialPortBaudRateProvider);
 
     // 显示连接对话框
@@ -291,7 +314,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           children: [
             const CircularProgressIndicator(),
             const SizedBox(width: 16),
-            Text('正在连接串口 ($baudRate bps)...'),
+            Text('正在连接 ${device.name} ($baudRate bps)...'),
           ],
         ),
       ),
@@ -299,20 +322,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     try {
       // 使用用户选择的波特率
-      await serialPortDatasource.connect(portName, baudRate: baudRate);
+      await serialDatasource.connect(device, baudRate: baudRate);
 
       if (!mounted) return;
       Navigator.of(context).pop(); // 关闭对话框
 
       // 更新全局连接状态
       ref.read(connectionStateProvider.notifier).state = true;
-      ref.read(connectedDeviceIdProvider.notifier).state = portName;
-      ref.read(connectedDeviceNameProvider.notifier).state = '串口: $portName';
-      ref.read(selectedSerialPortProvider.notifier).state = portName;
+      ref.read(connectedDeviceIdProvider.notifier).state = device.id;
+      ref.read(connectedDeviceNameProvider.notifier).state = '串口: ${device.name}';
+      ref.read(selectedSerialPortProvider.notifier).state = device.id;
+
+      // 重新初始化通信仓库以使用新连接的数据源
+      ref.invalidate(communicationRepositoryProvider);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已连接到串口 $portName'),
+          content: Text('已连接到 ${device.name}'),
           backgroundColor: Colors.green,
           duration: const Duration(seconds: 2),
         ),
@@ -323,7 +349,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('连接串口失败: $e'),
+          content: Text('连接失败: $e'),
           backgroundColor: Colors.red,
           duration: const Duration(seconds: 3),
         ),
@@ -807,7 +833,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   Widget _buildSerialPortList() {
     final selectedPort = ref.watch(selectedSerialPortProvider);
     final baudRate = ref.watch(serialPortBaudRateProvider);
-    
+
     if (_isLoadingPorts) {
       return const Center(
         child: Column(
@@ -821,7 +847,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       );
     }
 
-    if (_availableSerialPorts.isEmpty) {
+    if (_availableSerialDevices.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -833,7 +859,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ),
             const SizedBox(height: 20),
             Text(
-              '未找到可用的串口设备',
+              Platform.isAndroid ? '未找到可用的USB设备' : '未找到可用的串口设备',
               style: TextStyle(
                 color: Colors.grey.shade600,
                 fontSize: 16,
@@ -842,7 +868,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              '请连接USB转串口设备后点击刷新',
+              Platform.isAndroid
+                  ? '请连接USB OTG转串口设备后点击刷新'
+                  : '请连接USB转串口设备后点击刷新',
               style: TextStyle(
                 color: Colors.grey.shade500,
                 fontSize: 14,
@@ -855,11 +883,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _availableSerialPorts.length,
+      itemCount: _availableSerialDevices.length,
       itemBuilder: (context, index) {
-        final portName = _availableSerialPorts[index];
-        final isConnected = selectedPort == portName && ref.watch(connectionStateProvider);
-        
+        final device = _availableSerialDevices[index];
+        final isConnected = selectedPort == device.id && ref.watch(connectionStateProvider);
+
         return Container(
           margin: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -909,11 +937,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ),
               ),
               title: Text(
-                portName,
+                device.name,
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 16,
-                  fontFamily: 'monospace',
                 ),
               ),
               subtitle: Column(
@@ -968,9 +995,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                       ),
                     )
                   : Tooltip(
-                      message: '连接到 $portName',
+                      message: '连接到 ${device.name}',
                       child: ElevatedButton(
-                        onPressed: () => _connectToSerialPort(portName),
+                        onPressed: () => _connectToSerialPort(device),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           shape: RoundedRectangleBorder(

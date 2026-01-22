@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/bluetooth_datasource.dart';
 import '../../data/datasources/serial_port_datasource.dart';
+import '../../data/datasources/cross_platform_serial_datasource.dart';
 import '../../data/datasources/communication_datasource.dart';
 import '../../data/protocol/protocol_config.dart';
 import '../../data/repositories/communication_repository_impl.dart';
@@ -24,9 +25,14 @@ final bluetoothDatasourceProvider = Provider<BluetoothDatasource>((ref) {
   return BluetoothDatasource();
 });
 
-/// 串口数据源 Provider
+/// 串口数据源 Provider（桌面平台）
 final serialPortDatasourceProvider = Provider<SerialPortDatasource>((ref) {
   return SerialPortDatasource();
+});
+
+/// 跨平台串口数据源 Provider（用于扫描界面）
+final crossPlatformSerialDatasourceProvider = Provider<CrossPlatformSerialDatasource>((ref) {
+  return CrossPlatformSerialDatasource();
 });
 
 /// 当前通信类型 Provider
@@ -75,8 +81,9 @@ final communicationRepositoryProvider = FutureProvider<CommunicationRepository>(
     final datasource = ref.watch(bluetoothDatasourceProvider);
     return CommunicationRepositoryImpl.bluetooth(datasource, protocolConfig, ref);
   } else {
-    final datasource = ref.watch(serialPortDatasourceProvider);
-    return CommunicationRepositoryImpl.serialPort(datasource, protocolConfig, ref);
+    // 使用跨平台串口数据源
+    final datasource = ref.watch(crossPlatformSerialDatasourceProvider);
+    return CommunicationRepositoryImpl.crossPlatformSerial(datasource, protocolConfig, ref);
   }
 });
 

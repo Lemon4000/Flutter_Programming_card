@@ -10,6 +10,7 @@ import '../../domain/repositories/communication_repository.dart';
 import '../../presentation/providers/log_provider.dart';
 import '../datasources/bluetooth_datasource.dart';
 import '../datasources/serial_port_datasource.dart';
+import '../datasources/cross_platform_serial_datasource.dart';
 import '../models/flash_progress.dart';
 import '../protocol/frame_builder.dart';
 import '../protocol/frame_parser.dart';
@@ -20,6 +21,7 @@ import '../services/flash_worker.dart';
 class CommunicationRepositoryImpl implements CommunicationRepository {
   final BluetoothDatasource? _bluetoothDatasource;
   final SerialPortDatasource? _serialPortDatasource;
+  final CrossPlatformSerialDatasource? _crossPlatformSerialDatasource;
   final ProtocolConfig _protocolConfig;
   final Ref _ref; // 添加Ref以访问Provider
   late final FrameBuilder _frameBuilder;
@@ -49,7 +51,8 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     this._protocolConfig,
     this._ref,
   )   : _bluetoothDatasource = bluetoothDatasource,
-        _serialPortDatasource = null {
+        _serialPortDatasource = null,
+        _crossPlatformSerialDatasource = null {
     _frameBuilder = FrameBuilder(_protocolConfig);
     _frameParser = FrameParser(_protocolConfig);
 
@@ -57,18 +60,34 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     _dataSubscription = bluetoothDatasource.dataStream.listen(_handleData);
   }
 
-  /// 构造函数 - 串口
+  /// 构造函数 - 串口（桌面平台）
   CommunicationRepositoryImpl.serialPort(
     SerialPortDatasource serialPortDatasource,
     this._protocolConfig,
     this._ref,
   )   : _bluetoothDatasource = null,
-        _serialPortDatasource = serialPortDatasource {
+        _serialPortDatasource = serialPortDatasource,
+        _crossPlatformSerialDatasource = null {
     _frameBuilder = FrameBuilder(_protocolConfig);
     _frameParser = FrameParser(_protocolConfig);
 
     // 监听数据流
     _dataSubscription = serialPortDatasource.dataStream.listen(_handleData);
+  }
+
+  /// 构造函数 - 跨平台串口（Android + 桌面）
+  CommunicationRepositoryImpl.crossPlatformSerial(
+    CrossPlatformSerialDatasource crossPlatformSerialDatasource,
+    this._protocolConfig,
+    this._ref,
+  )   : _bluetoothDatasource = null,
+        _serialPortDatasource = null,
+        _crossPlatformSerialDatasource = crossPlatformSerialDatasource {
+    _frameBuilder = FrameBuilder(_protocolConfig);
+    _frameParser = FrameParser(_protocolConfig);
+
+    // 监听数据流
+    _dataSubscription = crossPlatformSerialDatasource.dataStream.listen(_handleData);
   }
 
   @override
@@ -80,6 +99,8 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       await _bluetoothDatasource.write(data);
     } else if (_serialPortDatasource != null) {
       await _serialPortDatasource.write(data);
+    } else if (_crossPlatformSerialDatasource != null) {
+      await _crossPlatformSerialDatasource.write(data);
     } else {
       throw Exception('没有可用的数据源');
     }
@@ -130,11 +151,27 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       _parameterCompleter!.complete(paramData);
       return;
     }
+    
+    // 如果解析失败且有错误信息，完成 completer 并返回错误
+    if (_parameterCompleter != null && !_parameterCompleter!.isCompleted && _frameParser.lastError != null) {
+      _addLog('读取参数失败: ${_frameParser.lastError}');
+      _parameterCompleter!.completeError(ProtocolFailure(_frameParser.lastError!));
+      _parameterCompleter = null;
+      return;
+    }
 
     // 尝试解析为参数写入响应
     final writeResult = _frameParser.parseWriteParameterResponse(frame);
     if (writeResult != null && _writeParameterCompleter != null && !_writeParameterCompleter!.isCompleted) {
       _writeParameterCompleter!.complete(writeResult);
+      return;
+    }
+    
+    // 如果解析失败且有错误信息，完成 completer 并返回错误
+    if (_writeParameterCompleter != null && !_writeParameterCompleter!.isCompleted && _frameParser.lastError != null) {
+      _addLog('写入参数失败: ${_frameParser.lastError}');
+      _writeParameterCompleter!.completeError(ProtocolFailure(_frameParser.lastError!));
+      _writeParameterCompleter = null;
       return;
     }
 
@@ -197,6 +234,10 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
         _addLog('读取参数超时');
         return const Left(TimeoutFailure('读取参数超时'));
       }
+      if (e is ProtocolFailure) {
+        // 已经在 _processFrame 中记录了日志
+        return Left(e);
+      }
       _addLog('读取参数失败: $e');
       return Left(ProtocolFailure('读取参数失败: $e'));
     } finally {
@@ -248,6 +289,9 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     } on TimeoutException {
       _addLog('写入参数超时');
       return const Left(TimeoutFailure('写入参数超时'));
+    } on ProtocolFailure catch (e) {
+      // 已经在 _processFrame 中记录了日志
+      return Left(e);
     } catch (e) {
       _addLog('写入参数失败: $e');
       return Left(ProtocolFailure('写入参数失败: $e'));

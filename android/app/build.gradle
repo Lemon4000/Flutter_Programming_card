@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.programmingcard.programming_card_host"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     // ndkVersion = flutter.ndkVersion  // 注释掉以避免 NDK 许可证问题
 
     compileOptions {

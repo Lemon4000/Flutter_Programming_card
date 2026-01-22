@@ -55,25 +55,33 @@ class ParsedVerifyResponse {
 /// 协议帧解析器
 class FrameParser {
   final ProtocolConfig config;
+  
+  /// 最后一次解析错误信息
+  String? lastError;
 
   FrameParser(this.config);
 
   /// 解析参数读取响应
   /// 
   /// 格式: [前导码]#A0:14.00,A1:60.00;[校验值]
+  /// 注意: 接收响应通常没有前导码，直接以 # 开始
   /// 
   /// 返回: ParsedParameterData 或 null（解析失败）
   ParsedParameterData? parseParameterResponse(List<int> frame) {
+    lastError = null;  // 清除上次的错误
+    
     try {
-      // 1. 检查前导码
-      final preambleBytes = config.getPreambleBytes();
+      // 1. 检查前导码（接收响应通常没有前导码）
+      final preambleBytes = config.getRxPreambleBytes();  // 使用接收前导码
       if (frame.length < preambleBytes.length + 3) {
-        return null; // 帧太短
+        print('参数响应帧太短: ${frame.length}');
+        return null; // 帧太短，可能不是参数响应
       }
 
       for (int i = 0; i < preambleBytes.length; i++) {
         if (frame[i] != preambleBytes[i]) {
-          return null; // 前导码不匹配
+          print('参数响应前导码不匹配');
+          return null; // 前导码不匹配，可能不是参数响应
         }
       }
 
@@ -91,6 +99,13 @@ class FrameParser {
         checksumBytes,
         config.checksumType.value,
       )) {
+        // CRC校验失败，设置错误信息
+        lastError = 'CRC校验失败';
+        print('参数响应CRC校验失败');
+        print('完整帧: ${frame.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        print('载荷: ${String.fromCharCodes(payloadBytes)}');
+        print('载荷字节: ${payloadBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+        print('接收的校验值: ${checksumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
         return null; // 校验失败
       }
 
@@ -99,6 +114,7 @@ class FrameParser {
       
       // 检查起始符
       if (!payload.startsWith(config.rxStart)) {
+        print('参数响应起始符不匹配，期望: ${config.rxStart}, 实际: ${payload.isNotEmpty ? payload[0] : "空"}');
         return null;
       }
 
@@ -133,6 +149,8 @@ class FrameParser {
   /// 
   /// 返回: true表示成功，false表示失败或校验错误
   bool? parseWriteParameterResponse(List<int> frame) {
+    lastError = null;  // 清除上次的错误
+    
     try {
       // 1. 检查前导码（接收响应通常没有前导码）
       final preambleBytes = config.getRxPreambleBytes();  // 使用接收前导码
@@ -162,6 +180,7 @@ class FrameParser {
         checksumBytes,
         config.checksumType.value,
       )) {
+        lastError = 'CRC校验失败';  // 设置错误信息
         print('写入响应CRC校验失败');
         print('载荷: ${String.fromCharCodes(payloadBytes)}');
         print('接收的校验值: ${checksumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');

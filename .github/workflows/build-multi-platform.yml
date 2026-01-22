@@ -1,0 +1,186 @@
+name: Build Multi-Platform
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.5'
+        channel: 'stable'
+        cache: true
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Build Android APK
+      run: flutter build apk --release
+
+    - name: Get version
+      id: version
+      run: |
+        VERSION=$(grep 'version:' pubspec.yaml | sed 's/version: //' | tr -d ' ')
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Rename APK
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        mv build/app/outputs/flutter-apk/app-release.apk \
+           build/app/outputs/flutter-apk/ProgrammingCardHost_v${VERSION}_Android.apk
+
+    - name: Upload Android APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-release
+        path: build/app/outputs/flutter-apk/ProgrammingCardHost_*.apk
+        retention-days: 30
+
+    - name: Upload to Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: build/app/outputs/flutter-apk/ProgrammingCardHost_*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.5'
+        channel: 'stable'
+        cache: true
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Build Windows Release
+      run: flutter build windows --release
+
+    - name: Get version
+      id: version
+      shell: pwsh
+      run: |
+        $content = Get-Content pubspec.yaml
+        $version = ($content | Select-String -Pattern 'version:\s*(.+)').Matches.Groups[1].Value
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+
+    - name: Create Release Archive
+      shell: pwsh
+      run: |
+        $version = "${{ steps.version.outputs.VERSION }}"
+        $archiveName = "ProgrammingCardHost_v${version}_Windows_x64.zip"
+        Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath $archiveName
+        echo "ARCHIVE_NAME=$archiveName" >> $env:GITHUB_OUTPUT
+      id: archive
+
+    - name: Upload Windows Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release
+        path: build/windows/x64/runner/Release/
+        retention-days: 30
+
+    - name: Upload Windows ZIP
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-release-zip
+        path: ${{ steps.archive.outputs.ARCHIVE_NAME }}
+        retention-days: 30
+
+    - name: Upload to Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ steps.archive.outputs.ARCHIVE_NAME }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Linux dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.24.5'
+        channel: 'stable'
+        cache: true
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Build Linux Release
+      run: flutter build linux --release
+
+    - name: Get version
+      id: version
+      run: |
+        VERSION=$(grep 'version:' pubspec.yaml | sed 's/version: //' | tr -d ' ')
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+
+    - name: Create Release Archive
+      run: |
+        VERSION="${{ steps.version.outputs.VERSION }}"
+        cd build/linux/x64/release/bundle
+        tar -czf ../../../../../ProgrammingCardHost_v${VERSION}_Linux_x64.tar.gz *
+        cd ../../../../../
+
+    - name: Upload Linux Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-release
+        path: build/linux/x64/release/bundle/
+        retention-days: 30
+
+    - name: Upload Linux Archive
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-release-tar
+        path: ProgrammingCardHost_*.tar.gz
+        retention-days: 30
+
+    - name: Upload to Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ProgrammingCardHost_*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -15,6 +15,9 @@ class BluetoothDatasource {
 
   // 缓存已配对设备的名称
   Map<String, String> _bondedDeviceNames = {};
+  
+  // 扫描状态标志
+  bool _isScanning = false;
 
   // 构造函数 - 禁用 Flutter Blue Plus 日志
   BluetoothDatasource() {
@@ -48,6 +51,15 @@ class BluetoothDatasource {
     Duration timeout = const Duration(seconds: 10),
   }) async* {
     try {
+      // 防止重复扫描
+      if (_isScanning) {
+        print('扫描已在进行中，跳过');
+        return;
+      }
+      
+      print('开始新的扫描...');
+      _isScanning = true;
+      
       // 检查蓝牙是否可用
       final isSupported = await FlutterBluePlus.isSupported;
       if (!isSupported) {
@@ -60,11 +72,30 @@ class BluetoothDatasource {
         throw Exception('蓝牙未开启');
       }
 
+      // 检查当前是否正在扫描
+      try {
+        final isScanning = await FlutterBluePlus.isScanning.first.timeout(
+          const Duration(seconds: 2),
+        );
+        print('FlutterBluePlus 当前扫描状态: $isScanning');
+        
+        if (isScanning) {
+          print('检测到正在扫描，强制停止...');
+          await FlutterBluePlus.stopScan();
+          await Future.delayed(const Duration(milliseconds: 1000));
+          print('强制停止完成');
+        }
+      } catch (e) {
+        print('检查扫描状态失败: $e');
+      }
+      
       // 重要：先停止之前可能存在的扫描，避免资源冲突
       try {
+        print('停止之前的扫描...');
         await FlutterBluePlus.stopScan();
-        // 等待一小段时间，确保扫描完全停止
-        await Future.delayed(const Duration(milliseconds: 500));
+        // 等待更长时间，确保扫描完全停止
+        await Future.delayed(const Duration(milliseconds: 1000));
+        print('之前的扫描已停止');
       } catch (e) {
         print('停止之前的扫描时出错（可忽略）: $e');
       }
@@ -86,17 +117,29 @@ class BluetoothDatasource {
         // 继续执行，不影响扫描
       }
 
-      // 开始扫描 - 使用更保守的扫描参数
+      // 开始扫描 - 不使用超时，由外部控制停止
+      print('启动蓝牙扫描（无超时限制，由用户控制停止）');
       await FlutterBluePlus.startScan(
-        timeout: timeout,
+        // 移除 timeout 参数，让扫描持续进行直到手动停止
         androidUsesFineLocation: true,
-        // 移除可能导致问题的参数
       );
+      print('蓝牙扫描已启动');
 
       // 返回扫描结果流
-      await for (final results in FlutterBluePlus.scanResults) {
-        yield results;
+      try {
+        await for (final results in FlutterBluePlus.scanResults) {
+          if (!_isScanning) {
+            print('扫描已被外部停止，退出扫描循环');
+            break;
+          }
+          yield results;
+        }
+      } catch (e) {
+        print('扫描结果流异常: $e');
+        rethrow;
       }
+      
+      print('扫描结果流结束');
     } on Exception catch (e) {
       print('扫描过程中出错: $e');
       rethrow;
@@ -104,18 +147,57 @@ class BluetoothDatasource {
       print('扫描过程中出现未知错误: $e');
       throw Exception('蓝牙扫描失败: $e');
     } finally {
-      // 确保扫描停止
+      print('扫描清理开始...');
+      _isScanning = false;
+      
+      // 确保扫描被停止
       try {
+        print('finally: 调用 FlutterBluePlus.stopScan()');
         await FlutterBluePlus.stopScan();
+        print('finally: 扫描已停止');
+        await Future.delayed(const Duration(milliseconds: 500));
       } catch (e) {
-        print('停止扫描时出错: $e');
+        print('finally: 停止扫描时出错: $e');
       }
+      
+      print('扫描清理完成');
     }
   }
 
   /// 停止扫描
   Future<void> stopScan() async {
-    await FlutterBluePlus.stopScan();
+    print('stopScan() 被调用，当前状态: _isScanning=$_isScanning');
+    
+    if (!_isScanning) {
+      print('扫描未在进行中，跳过停止操作');
+      return;
+    }
+    
+    try {
+      _isScanning = false;
+      print('调用 FlutterBluePlus.stopScan()');
+      await FlutterBluePlus.stopScan();
+      print('扫描已停止');
+      
+      // 检查蓝牙适配器状态
+      try {
+        final adapterState = await FlutterBluePlus.adapterState.first.timeout(
+          const Duration(seconds: 2),
+        );
+        print('蓝牙适配器状态: $adapterState');
+      } catch (e) {
+        print('获取蓝牙适配器状态失败: $e');
+      }
+      
+      // 等待更长时间，确保扫描完全停止
+      await Future.delayed(const Duration(milliseconds: 1000));
+      print('等待完成，扫描应该已完全停止');
+    } catch (e) {
+      print('停止扫描时出错: $e');
+      print('错误堆栈: ${StackTrace.current}');
+      // 即使出错，也标记为未扫描
+      _isScanning = false;
+    }
   }
 
   /// 连接设备

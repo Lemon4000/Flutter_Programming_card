@@ -29,26 +29,40 @@ class DeviceRepositoryImpl implements DeviceRepository {
   
   /// 从持久化存储加载设备名称缓存
   Future<void> _loadDeviceNameCache() async {
-    if (_cacheLoaded) return;
+    if (_cacheLoaded) {
+      print('缓存已加载，跳过');
+      return;
+    }
+    
+    print('开始加载设备名称缓存...');
     
     try {
       final prefs = await SharedPreferences.getInstance();
+      print('SharedPreferences 实例获取成功');
+      
       final cacheJson = prefs.getString(_deviceNameCacheKey);
+      print('缓存JSON: $cacheJson');
       
       if (cacheJson != null) {
         final Map<String, dynamic> cacheMap = json.decode(cacheJson);
+        print('解析缓存成功，包含 ${cacheMap.length} 个条目');
+        
         _deviceNameCache.clear();
         cacheMap.forEach((key, value) {
           if (value is String) {
             _deviceNameCache[key] = value;
+            print('  加载: $key -> $value');
           }
         });
         print('已加载设备名称缓存: ${_deviceNameCache.length} 个设备');
+      } else {
+        print('缓存为空，这是首次运行');
       }
       
       _cacheLoaded = true;
     } catch (e) {
       print('加载设备名称缓存失败: $e');
+      print('错误堆栈: ${StackTrace.current}');
       _cacheLoaded = true;
     }
   }
@@ -106,7 +120,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
               String finalName = deviceInfo.name;
               
               // 调试：打印当前状态
-              // print('设备 $deviceId: 扫描名称=$finalName, 缓存=${_deviceNameCache[deviceId]}');
+              print('设备 $deviceId: 扫描名称=$finalName, 缓存=${_deviceNameCache[deviceId]}');
               
               // 如果当前扫描到了有效名称，更新缓存
               if (finalName != '未知设备') {
@@ -139,8 +153,8 @@ class DeviceRepositoryImpl implements DeviceRepository {
                 isConnected: deviceInfo.isConnected,
               );
             })
-            // 注释掉过滤，恢复显示所有设备（包括未知设备）
-            // .where((device) => device.name != '未知设备')
+            // 过滤掉未知设备，只显示有名称的设备
+            .where((device) => device.name != '未知设备')
             .toList();
 
         // 按信号强度排序（从强到弱）
