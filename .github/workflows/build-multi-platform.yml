@@ -253,23 +253,28 @@ jobs:
         git tag "$TAG" || true
         git push origin "$TAG" || true
 
+        # 创建 release notes
+        cat > release_notes.md << 'EOF'
+        ## 自动构建版本 v${VERSION}
+
+        构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+        提交: ${{ github.sha }}
+
+        ### 下载说明
+
+        * Windows: 解压 ZIP 文件后运行 programming_card_host.exe
+        * Android: 直接安装 APK 文件
+        * Linux: 解压 tar.gz 文件后运行 programming_card_host
+
+        ### 更新内容
+
+        查看提交历史了解详细更新内容。
+        EOF
+
         # 创建 release
         gh release create "$TAG" \
           --title "Programming Card Host v${VERSION}" \
-          --notes "## 自动构建版本 v${VERSION}
-
-构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-提交: ${{ github.sha }}
-
-### 下载说明
-
-- **Windows**: 解压 ZIP 文件后运行 \`programming_card_host.exe\`
-- **Android**: 直接安装 APK 文件
-- **Linux**: 解压 tar.gz 文件后运行 \`programming_card_host\`
-
-### 更新内容
-
-查看提交历史了解详细更新内容。" \
+          --notes-file release_notes.md \
           artifacts/apk-artifact/*.apk \
           artifacts/windows-zip-artifact/*.zip \
           artifacts/linux-tar-artifact/*.tar.gz
