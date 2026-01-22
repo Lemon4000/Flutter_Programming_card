@@ -41,3 +41,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 大文件 - 不提交到Git
+lib/gradle-8.3-all.zip
+lib_backup_*.tar.gz
+*.tar.gz
+gradle-*.zip
