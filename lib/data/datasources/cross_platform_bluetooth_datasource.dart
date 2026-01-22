@@ -44,6 +44,17 @@ class CrossPlatformBluetoothDatasource {
   /// 是否已连接
   bool get isConnected => _fbpConnectedDevice != null || _ubleConnectedDeviceId != null;
 
+  /// 已连接设备的 ID
+  String? get connectedDeviceId {
+    if (_ubleConnectedDeviceId != null) {
+      return _ubleConnectedDeviceId;
+    }
+    if (_fbpConnectedDevice != null) {
+      return _fbpConnectedDevice!.remoteId.toString();
+    }
+    return null;
+  }
+
   /// 扫描蓝牙设备
   Stream<List<ScanResult>> scanDevices({
     Duration timeout = const Duration(seconds: 10),

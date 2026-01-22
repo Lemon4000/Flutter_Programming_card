@@ -109,7 +109,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
       // 选择数据源
       final scanStream = _crossPlatformBluetoothDatasource != null
-          ? _crossPlatformBluetoothDatasource!.scanDevices(timeout: timeout)
+          ? _crossPlatformBluetoothDatasource.scanDevices(timeout: timeout)
           : _bluetoothDatasource!.scanDevices(timeout: timeout);
 
       await for (final scanResults in scanStream) {
@@ -191,9 +191,9 @@ class DeviceRepositoryImpl implements DeviceRepository {
   Future<Either<Failure, void>> stopScan() async {
     try {
       if (_crossPlatformBluetoothDatasource != null) {
-        await _crossPlatformBluetoothDatasource!.stopScan();
+        await _crossPlatformBluetoothDatasource.stopScan();
       } else if (_bluetoothDatasource != null) {
-        await _bluetoothDatasource!.stopScan();
+        await _bluetoothDatasource.stopScan();
       }
       return const Right(null);
     } catch (e) {
@@ -207,22 +207,33 @@ class DeviceRepositoryImpl implements DeviceRepository {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     try {
-      // 检查是否已连接到该设备
-      final currentDevice = _bluetoothDatasource?.connectedDevice;
-      if (currentDevice != null &&
-          currentDevice.remoteId.toString().toLowerCase() == deviceId.toLowerCase()) { // 统一转换为小写比较
+      // 使用跨平台数据源
+      if (_crossPlatformBluetoothDatasource != null) {
+        await _crossPlatformBluetoothDatasource.connect(deviceId);
         return const Right(null);
       }
+      
+      // 使用 flutter_blue_plus 数据源
+      if (_bluetoothDatasource != null) {
+        // 检查是否已连接到该设备
+        final currentDevice = _bluetoothDatasource.connectedDevice;
+        if (currentDevice != null &&
+            currentDevice.remoteId.toString().toLowerCase() == deviceId.toLowerCase()) {
+          return const Right(null);
+        }
 
-      // 从缓存中获取设备
-      final device = _scannedDevices[deviceId];
-      if (device == null) {
-        return const Left(DeviceFailure('设备未找到，请先扫描'));
+        // 从缓存中获取设备
+        final device = _scannedDevices[deviceId];
+        if (device == null) {
+          return const Left(DeviceFailure('设备未找到，请先扫描'));
+        }
+
+        // 连接设备
+        await _bluetoothDatasource.connect(device, timeout: timeout);
+        return const Right(null);
       }
-
-      // 连接设备
-      await _bluetoothDatasource!.connect(device, timeout: timeout);
-      return const Right(null);
+      
+      return const Left(DeviceFailure('蓝牙数据源未初始化'));
     } catch (e) {
       return Left(ConnectionFailure(e.toString()));
     }
@@ -231,7 +242,11 @@ class DeviceRepositoryImpl implements DeviceRepository {
   @override
   Future<Either<Failure, void>> disconnect() async {
     try {
-      await _bluetoothDatasource!.disconnect();
+      if (_crossPlatformBluetoothDatasource != null) {
+        await _crossPlatformBluetoothDatasource.disconnect();
+      } else if (_bluetoothDatasource != null) {
+        await _bluetoothDatasource.disconnect();
+      }
       return const Right(null);
     } catch (e) {
       return Left(ConnectionFailure(e.toString()));
@@ -240,18 +255,40 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Stream<bool> get connectionStateStream {
-    return _bluetoothDatasource!.connectionStateStream.map(
-      (state) => state == BluetoothConnectionState.connected,
-    );
+    if (_crossPlatformBluetoothDatasource != null) {
+      return _crossPlatformBluetoothDatasource.connectionStateStream;
+    } else if (_bluetoothDatasource != null) {
+      return _bluetoothDatasource.connectionStateStream.map(
+        (state) => state == BluetoothConnectionState.connected,
+      );
+    }
+    return Stream.value(false);
   }
 
   @override
   Device? get connectedDevice {
+    // 使用跨平台数据源
+    if (_crossPlatformBluetoothDatasource != null) {
+      final deviceId = _crossPlatformBluetoothDatasource.connectedDeviceId;
+      if (deviceId == null) return null;
+      
+      // 从缓存中获取设备名称
+      final cachedName = _deviceNameCache[deviceId.toLowerCase()];
+      
+      return Device(
+        id: deviceId.toLowerCase(),
+        name: cachedName ?? '未知设备',
+        rssi: 0,
+        isConnected: true,
+      );
+    }
+    
+    // 使用 flutter_blue_plus 数据源
     final device = _bluetoothDatasource?.connectedDevice;
     if (device == null) return null;
 
     return Device(
-      id: device.remoteId.toString().toLowerCase(), // 统一转换为小写
+      id: device.remoteId.toString().toLowerCase(),
       name: device.platformName.isEmpty ? '未知设备' : device.platformName,
       rssi: 0,
       isConnected: true,
