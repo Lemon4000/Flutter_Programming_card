@@ -151,48 +151,71 @@ class CrossPlatformBluetoothDatasource {
   /// 使用 universal_ble 连接
   Future<void> _connectWithUniversalBle(String deviceId) async {
     try {
+      print('开始连接设备: $deviceId');
+
       // 连接设备
       await uble.UniversalBle.connect(deviceId);
+      print('设备已连接，开始发现服务');
 
       // 发现服务
       final services = await uble.UniversalBle.discoverServices(deviceId);
+      print('发现 ${services.length} 个服务');
 
       // 查找目标服务和特征
+      bool foundService = false;
       for (final service in services) {
-        if (service.uuid.toLowerCase() == serviceUuid.toLowerCase()) {
-          _ubleServiceUuid = service.uuid;
+        print('服务 UUID: ${service.uuid}');
 
-          for (final characteristic in service.characteristics) {
+        if (service.uuid.toLowerCase() == serviceUuid.toLowerCase()) {
+          foundService = true;
+          _ubleServiceUuid = service.uuid;
+          print('找到目标服务: ${service.uuid}');
+
+          final characteristics = service.characteristics;
+          print('服务包含 ${characteristics.length} 个特征');
+
+          for (final characteristic in characteristics) {
             final charUuid = characteristic.uuid.toLowerCase();
+            print('特征 UUID: ${characteristic.uuid}');
+
             if (charUuid == txCharacteristicUuid.toLowerCase()) {
               _ubleTxCharacteristicUuid = characteristic.uuid;
+              print('找到 TX 特征: ${characteristic.uuid}');
             }
             if (charUuid == rxCharacteristicUuid.toLowerCase()) {
               _ubleRxCharacteristicUuid = characteristic.uuid;
+              print('找到 RX 特征: ${characteristic.uuid}');
 
               // 订阅通知
-              await uble.UniversalBle.setNotifiable(
-                deviceId,
-                service.uuid,
-                characteristic.uuid,
-                uble.BleInputProperty.notification,
-              );
-
-              // 监听数据 - 使用 characteristic 的 onValueReceived
-              // 注意：这里需要保存 characteristic 对象以便后续监听
-              // 由于 API 限制，我们使用轮询或其他方式
+              try {
+                await uble.UniversalBle.setNotifiable(
+                  deviceId,
+                  service.uuid,
+                  characteristic.uuid,
+                  uble.BleInputProperty.notification,
+                );
+                print('已订阅通知');
+              } catch (e) {
+                print('订阅通知失败: $e');
+              }
             }
           }
         }
       }
 
+      if (!foundService) {
+        throw Exception('未找到目标服务 UUID: $serviceUuid');
+      }
+
       if (_ubleTxCharacteristicUuid == null || _ubleRxCharacteristicUuid == null) {
-        throw Exception('未找到目标特征');
+        throw Exception('未找到目标特征 (TX: $_ubleTxCharacteristicUuid, RX: $_ubleRxCharacteristicUuid)');
       }
 
       _ubleConnectedDeviceId = deviceId;
       _connectionStateController.add(true);
+      print('连接成功！');
     } catch (e) {
+      print('连接失败: $e');
       await disconnect();
       rethrow;
     }
