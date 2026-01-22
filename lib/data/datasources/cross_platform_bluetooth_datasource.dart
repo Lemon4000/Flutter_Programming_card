@@ -27,10 +27,16 @@ class CrossPlatformBluetoothDatasource {
 
   bool _isScanning = false;
 
-  // 目标服务和特征 UUID
-  static const String serviceUuid = '0000ffe0-0000-1000-8000-00805f9b34fb';
-  static const String txCharacteristicUuid = '0000ffe1-0000-1000-8000-00805f9b34fb';
-  static const String rxCharacteristicUuid = '0000ffe1-0000-1000-8000-00805f9b34fb';
+  // 目标服务和特征 UUID（支持多种常见的蓝牙串口服务）
+  static const List<String> serviceUuids = [
+    '0000ffe0-0000-1000-8000-00805f9b34fb', // 常见的蓝牙串口服务 UUID
+    '0000fff0-0000-1000-8000-00805f9b34fb', // 另一种常见的蓝牙串口服务 UUID
+  ];
+  static const List<String> characteristicUuids = [
+    '0000ffe1-0000-1000-8000-00805f9b34fb',
+    '0000fff1-0000-1000-8000-00805f9b34fb',
+    '0000fff2-0000-1000-8000-00805f9b34fb',
+  ];
 
   /// 判断是否使用 universal_ble（Windows 平台）
   bool get _useUniversalBle => !kIsWeb && Platform.isWindows;
@@ -173,16 +179,19 @@ class CrossPlatformBluetoothDatasource {
       }
 
       // 收集所有服务 UUID 用于调试
-      final serviceUuids = services.map((s) => s.uuid.toLowerCase()).toList();
+      final discoveredServiceUuids = services.map((s) => s.uuid.toLowerCase()).toList();
       
       // 查找目标服务和特征
       bool foundService = false;
       for (final service in services) {
         final serviceUuidLower = service.uuid.toLowerCase();
         
-        // 支持完整 UUID 和短格式 UUID
-        final isTargetService = serviceUuidLower == serviceUuid.toLowerCase() ||
-                                serviceUuidLower.contains('ffe0');
+        // 检查是否匹配任何支持的服务 UUID
+        final isTargetService = serviceUuids.any((targetUuid) {
+          final targetLower = targetUuid.toLowerCase();
+          return serviceUuidLower == targetLower || 
+                 serviceUuidLower.contains(targetLower.substring(4, 8)); // 提取短格式如 "ffe0" 或 "fff0"
+        });
         
         if (isTargetService) {
           foundService = true;
@@ -197,11 +206,16 @@ class CrossPlatformBluetoothDatasource {
           for (final characteristic in characteristics) {
             final charUuid = characteristic.uuid.toLowerCase();
 
-            // 支持完整 UUID 和短格式 UUID
-            if (charUuid == txCharacteristicUuid.toLowerCase() || charUuid.contains('ffe1')) {
+            // 检查是否匹配任何支持的特征 UUID
+            final isTargetCharacteristic = characteristicUuids.any((targetUuid) {
+              final targetLower = targetUuid.toLowerCase();
+              return charUuid == targetLower || 
+                     charUuid.contains(targetLower.substring(4, 8)); // 提取短格式
+            });
+
+            if (isTargetCharacteristic) {
+              // 同时用作 TX 和 RX
               _ubleTxCharacteristicUuid = characteristic.uuid;
-            }
-            if (charUuid == rxCharacteristicUuid.toLowerCase() || charUuid.contains('ffe1')) {
               _ubleRxCharacteristicUuid = characteristic.uuid;
 
               // 订阅通知
@@ -223,9 +237,9 @@ class CrossPlatformBluetoothDatasource {
 
       if (!foundService) {
         // 显示设备实际支持的服务
-        final supportedServices = serviceUuids.join(', ');
+        final supportedServices = discoveredServiceUuids.join(', ');
         throw Exception('设备不支持目标服务\n'
-            '需要: 0000FFE0 或包含 FFE0\n'
+            '需要: FFE0 或 FFF0\n'
             '设备支持: $supportedServices');
       }
 
@@ -254,13 +268,29 @@ class CrossPlatformBluetoothDatasource {
       final services = await device.discoverServices();
 
       for (final service in services) {
-        if (service.uuid.toString().toLowerCase() == serviceUuid.toLowerCase()) {
+        final serviceUuidStr = service.uuid.toString().toLowerCase();
+        
+        // 检查是否匹配任何支持的服务 UUID
+        final isTargetService = serviceUuids.any((targetUuid) {
+          final targetLower = targetUuid.toLowerCase();
+          return serviceUuidStr == targetLower || 
+                 serviceUuidStr.contains(targetLower.substring(4, 8));
+        });
+        
+        if (isTargetService) {
           for (final characteristic in service.characteristics) {
             final charUuid = characteristic.uuid.toString().toLowerCase();
-            if (charUuid == txCharacteristicUuid.toLowerCase()) {
+            
+            // 检查是否匹配任何支持的特征 UUID
+            final isTargetCharacteristic = characteristicUuids.any((targetUuid) {
+              final targetLower = targetUuid.toLowerCase();
+              return charUuid == targetLower || 
+                     charUuid.contains(targetLower.substring(4, 8));
+            });
+            
+            if (isTargetCharacteristic) {
+              // 同时用作 TX 和 RX
               _fbpTxCharacteristic = characteristic;
-            }
-            if (charUuid == rxCharacteristicUuid.toLowerCase()) {
               _fbpRxCharacteristic = characteristic;
               await characteristic.setNotifyValue(true);
 
