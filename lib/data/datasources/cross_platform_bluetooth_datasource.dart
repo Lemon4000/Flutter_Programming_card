@@ -172,10 +172,19 @@ class CrossPlatformBluetoothDatasource {
         throw Exception('设备没有可用的服务');
       }
 
+      // 收集所有服务 UUID 用于调试
+      final serviceUuids = services.map((s) => s.uuid.toLowerCase()).toList();
+      
       // 查找目标服务和特征
       bool foundService = false;
       for (final service in services) {
-        if (service.uuid.toLowerCase() == serviceUuid.toLowerCase()) {
+        final serviceUuidLower = service.uuid.toLowerCase();
+        
+        // 支持完整 UUID 和短格式 UUID
+        final isTargetService = serviceUuidLower == serviceUuid.toLowerCase() ||
+                                serviceUuidLower.contains('ffe0');
+        
+        if (isTargetService) {
           foundService = true;
           _ubleServiceUuid = service.uuid;
 
@@ -188,10 +197,11 @@ class CrossPlatformBluetoothDatasource {
           for (final characteristic in characteristics) {
             final charUuid = characteristic.uuid.toLowerCase();
 
-            if (charUuid == txCharacteristicUuid.toLowerCase()) {
+            // 支持完整 UUID 和短格式 UUID
+            if (charUuid == txCharacteristicUuid.toLowerCase() || charUuid.contains('ffe1')) {
               _ubleTxCharacteristicUuid = characteristic.uuid;
             }
-            if (charUuid == rxCharacteristicUuid.toLowerCase()) {
+            if (charUuid == rxCharacteristicUuid.toLowerCase() || charUuid.contains('ffe1')) {
               _ubleRxCharacteristicUuid = characteristic.uuid;
 
               // 订阅通知
@@ -212,7 +222,11 @@ class CrossPlatformBluetoothDatasource {
       }
 
       if (!foundService) {
-        throw Exception('设备不支持目标服务\n需要服务 UUID: 0000FFE0');
+        // 显示设备实际支持的服务
+        final supportedServices = serviceUuids.join(', ');
+        throw Exception('设备不支持目标服务\n'
+            '需要: 0000FFE0 或包含 FFE0\n'
+            '设备支持: $supportedServices');
       }
 
       if (_ubleTxCharacteristicUuid == null || _ubleRxCharacteristicUuid == null) {
