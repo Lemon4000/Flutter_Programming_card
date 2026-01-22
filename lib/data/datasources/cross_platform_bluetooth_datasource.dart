@@ -214,20 +214,37 @@ class CrossPlatformBluetoothDatasource {
             });
 
             if (isTargetCharacteristic) {
-              // 同时用作 TX 和 RX
-              _ubleTxCharacteristicUuid = characteristic.uuid;
-              _ubleRxCharacteristicUuid = characteristic.uuid;
-
-              // 订阅通知
-              try {
-                await uble.UniversalBle.setNotifiable(
-                  deviceId,
-                  service.uuid,
-                  characteristic.uuid,
-                  uble.BleInputProperty.notification,
-                );
-              } catch (e) {
-                // 订阅失败不影响连接
+              // 根据特征属性分配 TX 和 RX
+              final properties = characteristic.properties;
+              
+              // 检查是否支持写入
+              final supportsWrite = properties.contains(uble.CharacteristicProperty.write) ||
+                                   properties.contains(uble.CharacteristicProperty.writeWithoutResponse);
+              
+              // 检查是否支持通知
+              final supportsNotify = properties.contains(uble.CharacteristicProperty.notify) ||
+                                    properties.contains(uble.CharacteristicProperty.indicate);
+              
+              // 如果支持写入，用作 TX（发送）
+              if (supportsWrite) {
+                _ubleTxCharacteristicUuid = characteristic.uuid;
+              }
+              
+              // 如果支持通知或指示，用作 RX（接收）
+              if (supportsNotify) {
+                _ubleRxCharacteristicUuid = characteristic.uuid;
+                
+                // 订阅通知
+                try {
+                  await uble.UniversalBle.setNotifiable(
+                    deviceId,
+                    service.uuid,
+                    characteristic.uuid,
+                    uble.BleInputProperty.notification,
+                  );
+                } catch (e) {
+                  // 订阅失败不影响连接
+                }
               }
             }
           }
@@ -289,14 +306,23 @@ class CrossPlatformBluetoothDatasource {
             });
             
             if (isTargetCharacteristic) {
-              // 同时用作 TX 和 RX
-              _fbpTxCharacteristic = characteristic;
-              _fbpRxCharacteristic = characteristic;
-              await characteristic.setNotifyValue(true);
+              // 根据特征属性分配 TX 和 RX
+              final properties = characteristic.properties;
+              
+              // 如果支持写入，用作 TX（发送）
+              if (properties.write || properties.writeWithoutResponse) {
+                _fbpTxCharacteristic = characteristic;
+              }
+              
+              // 如果支持通知或指示，用作 RX（接收）
+              if (properties.notify || properties.indicate) {
+                _fbpRxCharacteristic = characteristic;
+                await characteristic.setNotifyValue(true);
 
-              _characteristicSubscription = characteristic.lastValueStream.listen((value) {
-                _dataStreamController.add(value);
-              });
+                _characteristicSubscription = characteristic.lastValueStream.listen((value) {
+                  _dataStreamController.add(value);
+                });
+              }
             }
           }
         }
