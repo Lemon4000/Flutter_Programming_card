@@ -84,8 +84,9 @@ final communicationRepositoryProvider = FutureProvider<CommunicationRepository>(
   final protocolConfig = await ref.watch(protocolConfigProvider.future);
 
   if (communicationType == CommunicationType.bluetooth) {
-    final datasource = ref.watch(bluetoothDatasourceProvider);
-    return CommunicationRepositoryImpl.bluetooth(datasource, protocolConfig, ref);
+    // 使用跨平台蓝牙数据源（支持 Windows）
+    final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
+    return CommunicationRepositoryImpl.crossPlatformBluetooth(datasource, protocolConfig, ref);
   } else {
     // 使用跨平台串口数据源
     final datasource = ref.watch(crossPlatformSerialDatasourceProvider);

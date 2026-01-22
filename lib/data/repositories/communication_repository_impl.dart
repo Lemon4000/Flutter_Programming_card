@@ -9,6 +9,7 @@ import '../../domain/entities/parameter_group_entity.dart';
 import '../../domain/repositories/communication_repository.dart';
 import '../../presentation/providers/log_provider.dart';
 import '../datasources/bluetooth_datasource.dart';
+import '../datasources/cross_platform_bluetooth_datasource.dart';
 import '../datasources/serial_port_datasource.dart';
 import '../datasources/cross_platform_serial_datasource.dart';
 import '../models/flash_progress.dart';
@@ -20,6 +21,7 @@ import '../services/flash_worker.dart';
 /// 通信仓库实现
 class CommunicationRepositoryImpl implements CommunicationRepository {
   final BluetoothDatasource? _bluetoothDatasource;
+  final CrossPlatformBluetoothDatasource? _crossPlatformBluetoothDatasource;
   final SerialPortDatasource? _serialPortDatasource;
   final CrossPlatformSerialDatasource? _crossPlatformSerialDatasource;
   final ProtocolConfig _protocolConfig;
@@ -51,6 +53,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     this._protocolConfig,
     this._ref,
   )   : _bluetoothDatasource = bluetoothDatasource,
+        _crossPlatformBluetoothDatasource = null,
         _serialPortDatasource = null,
         _crossPlatformSerialDatasource = null {
     _frameBuilder = FrameBuilder(_protocolConfig);
@@ -60,12 +63,29 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     _dataSubscription = bluetoothDatasource.dataStream.listen(_handleData);
   }
 
+  /// 构造函数 - 跨平台蓝牙（Windows + 其他平台）
+  CommunicationRepositoryImpl.crossPlatformBluetooth(
+    CrossPlatformBluetoothDatasource crossPlatformBluetoothDatasource,
+    this._protocolConfig,
+    this._ref,
+  )   : _bluetoothDatasource = null,
+        _crossPlatformBluetoothDatasource = crossPlatformBluetoothDatasource,
+        _serialPortDatasource = null,
+        _crossPlatformSerialDatasource = null {
+    _frameBuilder = FrameBuilder(_protocolConfig);
+    _frameParser = FrameParser(_protocolConfig);
+
+    // 监听数据流
+    _dataSubscription = crossPlatformBluetoothDatasource.dataStream.listen(_handleData);
+  }
+
   /// 构造函数 - 串口（桌面平台）
   CommunicationRepositoryImpl.serialPort(
     SerialPortDatasource serialPortDatasource,
     this._protocolConfig,
     this._ref,
   )   : _bluetoothDatasource = null,
+        _crossPlatformBluetoothDatasource = null,
         _serialPortDatasource = serialPortDatasource,
         _crossPlatformSerialDatasource = null {
     _frameBuilder = FrameBuilder(_protocolConfig);
@@ -81,6 +101,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
     this._protocolConfig,
     this._ref,
   )   : _bluetoothDatasource = null,
+        _crossPlatformBluetoothDatasource = null,
         _serialPortDatasource = null,
         _crossPlatformSerialDatasource = crossPlatformSerialDatasource {
     _frameBuilder = FrameBuilder(_protocolConfig);
@@ -97,6 +118,8 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
   Future<void> _writeData(List<int> data) async {
     if (_bluetoothDatasource != null) {
       await _bluetoothDatasource.write(data);
+    } else if (_crossPlatformBluetoothDatasource != null) {
+      await _crossPlatformBluetoothDatasource.write(data);
     } else if (_serialPortDatasource != null) {
       await _serialPortDatasource.write(data);
     } else if (_crossPlatformSerialDatasource != null) {
