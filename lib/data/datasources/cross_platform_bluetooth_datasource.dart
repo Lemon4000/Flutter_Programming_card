@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:universal_ble/universal_ble.dart' as uble;
@@ -286,7 +287,7 @@ class CrossPlatformBluetoothDatasource {
         _ubleConnectedDeviceId!,
         _ubleServiceUuid!,
         _ubleTxCharacteristicUuid!,
-        data,
+        Uint8List.fromList(data),
         uble.BleOutputProperty.withResponse,
       );
     } else {

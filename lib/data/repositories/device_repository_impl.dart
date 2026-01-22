@@ -34,6 +34,9 @@ class DeviceRepositoryImpl implements DeviceRepository {
       : _bluetoothDatasource = null {
     _loadDeviceNameCache();
   }
+
+  /// 获取当前使用的数据源（用于空安全检查）
+  dynamic get _currentDatasource => _crossPlatformBluetoothDatasource ?? _bluetoothDatasource;
   
   /// 从持久化存储加载设备名称缓存
   Future<void> _loadDeviceNameCache() async {
@@ -187,7 +190,11 @@ class DeviceRepositoryImpl implements DeviceRepository {
   @override
   Future<Either<Failure, void>> stopScan() async {
     try {
-      await _bluetoothDatasource.stopScan();
+      if (_crossPlatformBluetoothDatasource != null) {
+        await _crossPlatformBluetoothDatasource!.stopScan();
+      } else if (_bluetoothDatasource != null) {
+        await _bluetoothDatasource!.stopScan();
+      }
       return const Right(null);
     } catch (e) {
       return Left(DeviceFailure(e.toString()));
@@ -201,7 +208,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
   }) async {
     try {
       // 检查是否已连接到该设备
-      final currentDevice = _bluetoothDatasource.connectedDevice;
+      final currentDevice = _bluetoothDatasource?.connectedDevice;
       if (currentDevice != null &&
           currentDevice.remoteId.toString().toLowerCase() == deviceId.toLowerCase()) { // 统一转换为小写比较
         return const Right(null);
@@ -214,7 +221,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
       }
 
       // 连接设备
-      await _bluetoothDatasource.connect(device, timeout: timeout);
+      await _bluetoothDatasource!.connect(device, timeout: timeout);
       return const Right(null);
     } catch (e) {
       return Left(ConnectionFailure(e.toString()));
@@ -224,7 +231,7 @@ class DeviceRepositoryImpl implements DeviceRepository {
   @override
   Future<Either<Failure, void>> disconnect() async {
     try {
-      await _bluetoothDatasource.disconnect();
+      await _bluetoothDatasource!.disconnect();
       return const Right(null);
     } catch (e) {
       return Left(ConnectionFailure(e.toString()));
@@ -233,14 +240,14 @@ class DeviceRepositoryImpl implements DeviceRepository {
 
   @override
   Stream<bool> get connectionStateStream {
-    return _bluetoothDatasource.connectionStateStream.map(
+    return _bluetoothDatasource!.connectionStateStream.map(
       (state) => state == BluetoothConnectionState.connected,
     );
   }
 
   @override
   Device? get connectedDevice {
-    final device = _bluetoothDatasource.connectedDevice;
+    final device = _bluetoothDatasource?.connectedDevice;
     if (device == null) return null;
 
     return Device(
