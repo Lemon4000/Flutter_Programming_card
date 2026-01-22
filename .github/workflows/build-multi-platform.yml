@@ -33,6 +33,33 @@ jobs:
     - name: Install dependencies
       run: flutter pub get
 
+    - name: Fix flutter_blue_plus_android plugin
+      run: |
+        PLUGIN_PATH="$HOME/.pub-cache/hosted/pub.dev/flutter_blue_plus_android-7.0.4/android/build.gradle"
+        if [ -f "$PLUGIN_PATH" ]; then
+          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdk 34/' "$PLUGIN_PATH"
+          echo "✓ Fixed flutter_blue_plus_android plugin"
+        fi
+
+    - name: Fix flutter_libserialport plugin
+      run: |
+        PLUGIN_PATH="$HOME/.pub-cache/hosted/pub.dev/flutter_libserialport-0.4.0/android/build.gradle"
+        if [ -f "$PLUGIN_PATH" ]; then
+          # Add namespace if not exists
+          if ! grep -q "namespace" "$PLUGIN_PATH"; then
+            sed -i '/^android {/a\    namespace '\''org.sigrok.flutter_libserialport'\''' "$PLUGIN_PATH"
+          fi
+          # Update compileSdkVersion
+          sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' "$PLUGIN_PATH"
+          # Update minSdkVersion
+          sed -i 's/minSdkVersion 16/minSdkVersion 21/' "$PLUGIN_PATH"
+          # Add Java compatibility if not exists
+          if ! grep -q "compileOptions" "$PLUGIN_PATH"; then
+            sed -i '/defaultConfig {/i\    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_1_8\n        targetCompatibility JavaVersion.VERSION_1_8\n    }\n\n    kotlinOptions {\n        jvmTarget = '\''1.8'\''\n    }\n' "$PLUGIN_PATH"
+          fi
+          echo "✓ Fixed flutter_libserialport plugin"
+        fi
+
     - name: Build Android APK
       run: flutter build apk --release
 
