@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/bluetooth_datasource.dart';
 import '../../data/datasources/cross_platform_bluetooth_datasource.dart';
@@ -67,10 +69,17 @@ final protocolConfigProvider = FutureProvider<ProtocolConfig>((ref) async {
 // 仓库 Providers
 // ============================================================================
 
-/// 设备仓库 Provider（使用跨平台蓝牙）
+/// 设备仓库 Provider（根据平台选择蓝牙实现）
 final deviceRepositoryProvider = Provider<DeviceRepository>((ref) {
-  final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
-  return DeviceRepositoryImpl.crossPlatform(datasource);
+  // Windows 使用跨平台蓝牙（universal_ble）
+  // 其他平台使用原生蓝牙（flutter_blue_plus）
+  if (!kIsWeb && Platform.isWindows) {
+    final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
+    return DeviceRepositoryImpl.crossPlatform(datasource);
+  } else {
+    final datasource = ref.watch(bluetoothDatasourceProvider);
+    return DeviceRepositoryImpl.bluetooth(datasource);
+  }
 });
 
 /// 配置仓库 Provider
@@ -84,9 +93,15 @@ final communicationRepositoryProvider = FutureProvider<CommunicationRepository>(
   final protocolConfig = await ref.watch(protocolConfigProvider.future);
 
   if (communicationType == CommunicationType.bluetooth) {
-    // 使用跨平台蓝牙数据源（支持 Windows）
-    final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
-    return CommunicationRepositoryImpl.crossPlatformBluetooth(datasource, protocolConfig, ref);
+    // Windows 使用跨平台蓝牙（universal_ble）
+    // 其他平台使用原生蓝牙（flutter_blue_plus）
+    if (!kIsWeb && Platform.isWindows) {
+      final datasource = ref.watch(crossPlatformBluetoothDatasourceProvider);
+      return CommunicationRepositoryImpl.crossPlatformBluetooth(datasource, protocolConfig, ref);
+    } else {
+      final datasource = ref.watch(bluetoothDatasourceProvider);
+      return CommunicationRepositoryImpl.bluetooth(datasource, protocolConfig, ref);
+    }
   } else {
     // 使用跨平台串口数据源
     final datasource = ref.watch(crossPlatformSerialDatasourceProvider);

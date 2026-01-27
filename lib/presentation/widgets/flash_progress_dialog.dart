@@ -316,10 +316,15 @@ class _FlashProgressDialogState extends ConsumerState<FlashProgressDialog> {
       // 烧录中
       return OutlinedButton.icon(
         onPressed: () {
-          // 停止烧录
+          // 调用停止烧录回调
+          final abortCallback = ref.read(abortFlashingCallbackProvider);
+          if (abortCallback != null) {
+            abortCallback();
+          }
+          
+          // 更新进度状态
           ref.read(flashProgressProvider.notifier).state =
-              FlashProgress.cancelled();
-          Navigator.of(context).pop(false);
+              FlashProgress.cancelled(startTime: progress.startTime);
         },
         icon: const Icon(Icons.stop_rounded),
         label: const Text('停止烧录'),

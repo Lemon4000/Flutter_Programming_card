@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/entities/parameter.dart';
 import '../../domain/entities/parameter_group.dart';
 import '../providers/providers.dart';
+import '../../core/utils/snackbar_helper.dart';
 
 /// 参数读写页面
 class ParameterScreen extends ConsumerStatefulWidget {
@@ -193,13 +194,11 @@ class _ParameterScreenState extends ConsumerState<ParameterScreen> {
   void _showMessage(String message, {bool isError = false}) {
     if (!mounted) return;
     
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    if (isError) {
+      SnackBarHelper.showError(context, message);
+    } else {
+      SnackBarHelper.showSuccess(context, message);
+    }
   }
 
   @override

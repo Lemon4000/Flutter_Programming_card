@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/models/firmware_file.dart';
 import '../../data/models/flash_progress.dart';
+import '../../data/services/flash_worker.dart';
 import '../providers/flash_providers.dart';
 import '../providers/providers.dart';
 import '../../core/utils/logger.dart';
+import '../../core/utils/snackbar_helper.dart';
 import '../widgets/flash_progress_dialog.dart';
 
 /// 烧录界面
@@ -16,6 +18,8 @@ class FlashScreen extends ConsumerStatefulWidget {
 }
 
 class _FlashScreenState extends ConsumerState<FlashScreen> {
+  FlashWorker? _flashWorker; // 保存当前的烧录 worker 实例
+
   /// 选择外部固件文件
   Future<void> _pickFirmwareFile() async {
     final dataSource = ref.read(firmwareDataSourceProvider);
@@ -24,12 +28,7 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
     if (firmware != null) {
       ref.read(selectedFirmwareProvider.notifier).state = firmware;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已选择: ${firmware.name}'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        SnackBarHelper.showInfo(context, '已选择: ${firmware.name}');
       }
     }
   }
@@ -38,24 +37,14 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
   Future<void> _startFlashing() async {
     final selectedFirmware = ref.read(selectedFirmwareProvider);
     if (selectedFirmware == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('请先选择固件文件'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      SnackBarHelper.showWarning(context, '请先选择固件文件');
       return;
     }
 
     // 检查连接状态
     final isConnected = ref.read(connectionStateProvider);
     if (!isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('设备未连接，请先连接设备'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SnackBarHelper.showError(context, '设备未连接，请先连接设备');
       return;
     }
 
@@ -69,6 +58,14 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
     final startTime = DateTime.now();
     ref.read(flashProgressProvider.notifier).state = FlashProgress.preparing('准备烧录...');
     ref.read(flashLogsProvider.notifier).state = [];
+
+    // 获取 communication repository 用于停止烧录
+    final communicationRepo = await ref.read(communicationRepositoryProvider.future);
+    
+    // 设置停止烧录回调
+    ref.read(abortFlashingCallbackProvider.notifier).state = () {
+      communicationRepo.abortFlashing();
+    };
 
     // 显示进度对话框
     if (!mounted) return;
@@ -147,7 +144,6 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
   @override
   Widget build(BuildContext context) {
     final selectedFirmware = ref.watch(selectedFirmwareProvider);
-    final flashProgress = ref.watch(flashProgressProvider);
     final initTimeout = ref.watch(initTimeoutProvider);
     final initMaxRetries = ref.watch(initMaxRetriesProvider);
     final programRetryDelay = ref.watch(programRetryDelayProvider);
@@ -167,10 +163,15 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
 
           const Divider(height: 1),
 
-          // 操作按钮区
-          _buildActionButtonSection(
-            selectedFirmware,
-            flashProgress,
+          // 操作按钮区 - 使用Consumer只重建按钮部分
+          Consumer(
+            builder: (context, ref, child) {
+              final flashProgress = ref.watch(flashProgressProvider);
+              return _buildActionButtonSection(
+                selectedFirmware,
+                flashProgress,
+              );
+            },
           ),
         ],
       ),
@@ -281,13 +282,7 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
                         OutlinedButton.icon(
                           onPressed: () {
                             ref.read(selectedFirmwareProvider.notifier).state = null;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('已取消选择'),
-                                duration: Duration(seconds: 1),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
+                            SnackBarHelper.showInfo(context, '已取消选择');
                           },
                           icon: const Icon(Icons.close_rounded, size: 18),
                           label: const Text('取消选择'),
@@ -398,100 +393,129 @@ class _FlashScreenState extends ConsumerState<FlashScreen> {
   ) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('烧录设置'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const SizedBox(
-                  width: 100,
-                  child: Text('初始化超时'),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: currentTimeout.toDouble(),
+      builder: (dialogContext) => Consumer(
+        builder: (context, ref, child) {
+          // 监听 provider 的变化，实时更新滑块
+          final timeout = ref.watch(initTimeoutProvider);
+          final retries = ref.watch(initMaxRetriesProvider);
+          final retryDelay = ref.watch(programRetryDelayProvider);
+
+          return AlertDialog(
+            title: const Text('烧录设置'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 初始化超时
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '初始化超时',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '${timeout}ms',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Slider(
+                    value: timeout.toDouble(),
                     min: 10,
                     max: 200,
                     divisions: 19,
-                    label: '${currentTimeout}ms',
+                    label: '${timeout}ms',
                     onChanged: (value) {
                       ref.read(initTimeoutProvider.notifier).state = value.toInt();
                     },
                   ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: Text(
-                    '${currentTimeout}ms',
-                    style: const TextStyle(fontSize: 12),
+                  const SizedBox(height: 16),
+                  
+                  // 初始化重试
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '初始化重试',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '$retries次',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                const SizedBox(
-                  width: 100,
-                  child: Text('初始化重试'),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: currentRetries.toDouble(),
+                  Slider(
+                    value: retries.toDouble(),
                     min: 10,
                     max: 500,
                     divisions: 49,
-                    label: '$currentRetries次',
+                    label: '$retries次',
                     onChanged: (value) {
                       ref.read(initMaxRetriesProvider.notifier).state = value.toInt();
                     },
                   ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: Text(
-                    '$currentRetries次',
-                    style: const TextStyle(fontSize: 12),
+                  const SizedBox(height: 16),
+                  
+                  // 编程重试延迟
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '编程重试延迟',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '${retryDelay}ms',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                const SizedBox(
-                  width: 100,
-                  child: Text('编程重试延迟'),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: currentProgramRetryDelay.toDouble(),
+                  Slider(
+                    value: retryDelay.toDouble(),
                     min: 10,
                     max: 500,
                     divisions: 49,
-                    label: '${currentProgramRetryDelay}ms',
+                    label: '${retryDelay}ms',
                     onChanged: (value) {
                       ref.read(programRetryDelayProvider.notifier).state = value.toInt();
                     },
                   ),
-                ),
-                SizedBox(
-                  width: 50,
-                  child: Text(
-                    '${currentProgramRetryDelay}ms',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('关闭'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

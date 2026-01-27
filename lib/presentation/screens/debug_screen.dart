@@ -6,6 +6,7 @@ import '../../data/models/firmware_file.dart';
 import '../providers/debug_providers.dart';
 import '../providers/providers.dart';
 import '../widgets/debug_command_card.dart';
+import '../../core/utils/snackbar_helper.dart';
 
 /// 调试页面
 ///
@@ -403,13 +404,22 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
   /// 选择 HEX 文件
   Future<void> _pickHexFile() async {
     try {
+      // 使用 FileType.any，因为 Android 不支持 .hex 自定义扩展名
       final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['hex'],
+        type: FileType.any,
       );
 
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
+        
+        // 验证文件扩展名
+        if (!path.toLowerCase().endsWith('.hex')) {
+          if (mounted) {
+            SnackBarHelper.showError(context, '请选择 .hex 格式的文件');
+          }
+          return;
+        }
+        
         final name = result.files.single.name;
 
         // 加载 HEX 文件
@@ -422,9 +432,7 @@ class _DebugScreenState extends ConsumerState<DebugScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载 HEX 文件失败: $e')),
-        );
+        SnackBarHelper.showError(context, '加载 HEX 文件失败: $e');
       }
     }
   }

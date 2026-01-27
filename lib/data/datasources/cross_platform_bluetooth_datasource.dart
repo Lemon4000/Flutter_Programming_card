@@ -127,21 +127,62 @@ class CrossPlatformBluetoothDatasource {
 
   /// 使用 flutter_blue_plus 扫描
   Stream<List<ScanResult>> _scanWithFlutterBluePlus(Duration timeout) async* {
-    FlutterBluePlus.setLogLevel(LogLevel.none);
+    try {
+      FlutterBluePlus.setLogLevel(LogLevel.none);
 
-    final scanResults = <DeviceIdentifier, ScanResult>{};
-
-    final subscription = FlutterBluePlus.scanResults.listen((results) {
-      for (final result in results) {
-        scanResults[result.device.remoteId] = result;
+      // 检查蓝牙是否支持
+      final isSupported = await FlutterBluePlus.isSupported;
+      if (!isSupported) {
+        throw Exception('设备不支持蓝牙');
       }
-    });
 
-    await FlutterBluePlus.startScan(timeout: timeout);
-    await Future.delayed(timeout);
-    await subscription.cancel();
+      // 检查蓝牙是否开启
+      try {
+        final adapterState = await FlutterBluePlus.adapterState.first.timeout(
+          const Duration(seconds: 2),
+        );
+        if (adapterState != BluetoothAdapterState.on) {
+          throw Exception('蓝牙未开启');
+        }
+      } catch (e) {
+        if (e.toString().contains('Bad state')) {
+          throw Exception('无法获取蓝牙状态，请确保蓝牙已开启');
+        }
+        rethrow;
+      }
 
-    yield scanResults.values.toList();
+      // 检查当前是否正在扫描
+      try {
+        final isScanning = await FlutterBluePlus.isScanning.first.timeout(
+          const Duration(seconds: 2),
+        );
+        if (isScanning) {
+          await FlutterBluePlus.stopScan();
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      } catch (e) {
+        // 忽略检查扫描状态的错误
+      }
+
+      final scanResults = <DeviceIdentifier, ScanResult>{};
+
+      final subscription = FlutterBluePlus.scanResults.listen((results) {
+        for (final result in results) {
+          scanResults[result.device.remoteId] = result;
+        }
+      });
+
+      await FlutterBluePlus.startScan(
+        timeout: timeout,
+        androidUsesFineLocation: true,
+      );
+      await Future.delayed(timeout);
+      await subscription.cancel();
+
+      yield scanResults.values.toList();
+    } catch (e) {
+      throw Exception('蓝牙扫描失败: $e');
+    }
   }
 
   /// 停止扫描
@@ -279,44 +320,82 @@ class CrossPlatformBluetoothDatasource {
   /// 使用 flutter_blue_plus 连接
   Future<void> _connectWithFlutterBluePlus(String deviceId) async {
     try {
+      print('🔵 [CrossPlatform] 开始连接设备: $deviceId');
       final device = BluetoothDevice(remoteId: DeviceIdentifier(deviceId));
-      await device.connect(timeout: const Duration(seconds: 15));
+
+      print('🔵 [CrossPlatform] 正在连接...');
+
+      // 尝试连接，捕获 "Bad state" 错误并重试
+      int retryCount = 0;
+      const maxRetries = 3;
+      bool connected = false;
+
+      while (!connected && retryCount < maxRetries) {
+        try {
+          await device.connect(timeout: const Duration(seconds: 15));
+          connected = true;
+          print('🔵 [CrossPlatform] 连接成功！');
+        } catch (e) {
+          retryCount++;
+          if (e.toString().contains('Bad state')) {
+            print('⚠️ [CrossPlatform] 连接遇到 Bad state 错误，重试 $retryCount/$maxRetries');
+            if (retryCount < maxRetries) {
+              await Future.delayed(Duration(milliseconds: 500 * retryCount));
+              continue;
+            }
+          }
+          rethrow;
+        }
+      }
+
+      if (!connected) {
+        throw Exception('连接失败：已重试 $maxRetries 次');
+      }
+
+      print('🔵 [CrossPlatform] 开始发现服务...');
 
       final services = await device.discoverServices();
+      print('🔵 [CrossPlatform] 发现 ${services.length} 个服务');
 
       for (final service in services) {
         final serviceUuidStr = service.uuid.toString().toLowerCase();
-        
+        print('🔵 [CrossPlatform] 检查服务: $serviceUuidStr');
+
         // 检查是否匹配任何支持的服务 UUID
         final isTargetService = serviceUuids.any((targetUuid) {
           final targetLower = targetUuid.toLowerCase();
-          return serviceUuidStr == targetLower || 
+          return serviceUuidStr == targetLower ||
                  serviceUuidStr.contains(targetLower.substring(4, 8));
         });
-        
+
         if (isTargetService) {
+          print('🔵 [CrossPlatform] 找到目标服务: $serviceUuidStr');
           for (final characteristic in service.characteristics) {
             final charUuid = characteristic.uuid.toString().toLowerCase();
-            
+            print('🔵 [CrossPlatform] 检查特征: $charUuid');
+
             // 检查是否匹配任何支持的特征 UUID
             final isTargetCharacteristic = characteristicUuids.any((targetUuid) {
               final targetLower = targetUuid.toLowerCase();
-              return charUuid == targetLower || 
+              return charUuid == targetLower ||
                      charUuid.contains(targetLower.substring(4, 8));
             });
-            
+
             if (isTargetCharacteristic) {
+              print('🔵 [CrossPlatform] 找到目标特征: $charUuid');
               // 根据特征属性分配 TX 和 RX
               final properties = characteristic.properties;
-              
+
               // 如果支持写入，用作 TX（发送）
               if (properties.write || properties.writeWithoutResponse) {
                 _fbpTxCharacteristic = characteristic;
+                print('🔵 [CrossPlatform] 设置 TX 特征: $charUuid');
               }
-              
+
               // 如果支持通知或指示，用作 RX（接收）
               if (properties.notify || properties.indicate) {
                 _fbpRxCharacteristic = characteristic;
+                print('🔵 [CrossPlatform] 设置 RX 特征: $charUuid');
                 await characteristic.setNotifyValue(true);
 
                 _characteristicSubscription = characteristic.lastValueStream.listen((value) {
@@ -329,18 +408,25 @@ class CrossPlatformBluetoothDatasource {
       }
 
       if (_fbpTxCharacteristic == null || _fbpRxCharacteristic == null) {
+        print('❌ [CrossPlatform] 未找到目标特征 - TX: ${_fbpTxCharacteristic != null}, RX: ${_fbpRxCharacteristic != null}');
         throw Exception('未找到目标特征');
       }
 
+      print('✅ [CrossPlatform] 连接成功！');
       _fbpConnectedDevice = device;
       _connectionStateController.add(true);
 
+      // 连接成功后才开始监听连接状态变化
+      _connectionStateSubscription?.cancel();
       _connectionStateSubscription = device.connectionState.listen((state) {
+        print('🔵 [CrossPlatform] 连接状态变化: $state');
         if (state == BluetoothConnectionState.disconnected) {
           _handleDisconnection();
         }
       });
     } catch (e) {
+      print('❌ [CrossPlatform] 连接失败: $e');
+      print('❌ [CrossPlatform] 错误类型: ${e.runtimeType}');
       await disconnect();
       rethrow;
     }

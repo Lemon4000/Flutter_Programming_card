@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/datasources/firmware_datasource.dart';
 import '../../data/models/firmware_file.dart';
 import '../../data/models/flash_progress.dart';
+import '../../data/services/flash_worker.dart';
 
 /// 固件数据源 Provider
 final firmwareDataSourceProvider = Provider<FirmwareDataSource>((ref) {
@@ -21,6 +22,12 @@ final selectedFirmwareProvider = StateProvider<FirmwareFile?>((ref) => null);
 final flashProgressProvider = StateProvider<FlashProgress>((ref) {
   return FlashProgress.idle();
 });
+
+/// 当前烧录 Worker Provider（用于停止烧录）
+final currentFlashWorkerProvider = StateProvider<FlashWorker?>((ref) => null);
+
+/// 停止烧录回调 Provider
+final abortFlashingCallbackProvider = StateProvider<void Function()?>((ref) => null);
 
 /// 是否显示详细信息 Provider
 final showFlashDetailProvider = StateProvider<bool>((ref) => false);

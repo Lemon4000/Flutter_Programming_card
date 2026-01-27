@@ -131,12 +131,21 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
 
   /// 处理接收到的数据
   void _handleData(List<int> data) {
+    // 异步处理整个数据接收流程，避免阻塞事件循环
+    Future.microtask(() => _handleDataAsync(data));
+  }
+
+  /// 异步处理数据（保持帧处理的顺序性）
+  void _handleDataAsync(List<int> data) {
+    final startTime = DateTime.now();
     try {
-      // 记录接收的原始数据到日志
-      _ref.read(logProvider.notifier).addRxLog(data);
+      // 临时禁用日志记录以测试性能
+      // _ref.read(logProvider.notifier).addRxLog(data);
 
       // 添加到缓冲区
       _buffer.addAll(data);
+      final bufferTime = DateTime.now().difference(startTime).inMicroseconds;
+      print('[PERF] 缓冲区操作: ${bufferTime}μs');
 
       // 检查缓冲区大小，如果超过限制则截断
       if (_buffer.length > _maxBufferSize) {
@@ -146,7 +155,11 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
 
       // 尝试提取完整帧
       while (true) {
+        final parseStart = DateTime.now();
         final (frame, remaining) = _frameParser.findCompleteFrame(_buffer);
+        final parseTime = DateTime.now().difference(parseStart).inMicroseconds;
+        print('[PERF] 帧解析: ${parseTime}μs');
+
         if (frame == null) {
           _buffer = remaining;
           break;
@@ -154,13 +167,19 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
 
         _buffer = remaining;
 
-        // 路由到 FlashWorker 或参数处理
+        // 路由到 FlashWorker 或参数处理（同步，保持顺序）
         if (_isFlashing && _flashWorker != null) {
+          final workerStart = DateTime.now();
           _flashWorker!.handleReceivedFrame(frame);
+          final workerTime = DateTime.now().difference(workerStart).inMicroseconds;
+          print('[PERF] Worker处理: ${workerTime}μs');
         } else {
           _processFrame(frame);
         }
       }
+
+      final totalTime = DateTime.now().difference(startTime).inMicroseconds;
+      print('[PERF] ⚠️ _handleData总耗时: ${totalTime}μs');
     } catch (e) {
       _addLog('处理数据错误: $e');
     }
@@ -220,7 +239,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       _addLog('发送读取请求: $group');
 
       // 记录发送的数据到日志
-      _ref.read(logProvider.notifier).addTxLog(frame);
+      // _ref.read(logProvider.notifier).addTxLog(frame);
 
       // 创建Completer等待响应
       _parameterCompleter = Completer<ParsedParameterData>();
@@ -285,7 +304,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
       _addLog('发送写入请求: $group, ${parameters.length} 个参数');
 
       // 记录发送的数据到日志
-      _ref.read(logProvider.notifier).addTxLog(frame);
+      // _ref.read(logProvider.notifier).addTxLog(frame);
 
       // 创建Completer等待响应
       _writeParameterCompleter = Completer<bool>();
@@ -343,7 +362,7 @@ class CommunicationRepositoryImpl implements CommunicationRepository {
         onLog: _addLog,
         onTxData: (data) {
           // 记录发送的数据到日志
-          _ref.read(logProvider.notifier).addTxLog(data);
+          // _ref.read(logProvider.notifier).addTxLog(data);
         },
         initTimeout: initTimeout ?? 50,
         initMaxRetries: initMaxRetries ?? 100,

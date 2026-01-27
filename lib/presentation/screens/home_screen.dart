@@ -8,6 +8,7 @@ import 'log_screen.dart';
 import 'debug_screen.dart';
 import '../providers/providers.dart';
 import '../../core/utils/logger.dart';
+import '../../core/utils/snackbar_helper.dart';
 
 /// 主界面
 class HomeScreen extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
   StreamSubscription? _connectionStateSubscription;
+  bool _isInitialConnection = true; // 标记是否是初始连接
 
   final List<Widget> _screens = [
     const ScanScreen(), // 使用真实蓝牙扫描页面
@@ -50,20 +52,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _connectionStateSubscription = bluetoothDatasource.connectionStateStream.listen(
           (isConnected) {
             AppLogger.info('连接状态变化: $isConnected', 'HomeScreen');
+
+            // 如果是初始连接且状态为断开，忽略（这是初始状态）
+            if (_isInitialConnection && !isConnected) {
+              _isInitialConnection = false;
+              return;
+            }
+
+            // 标记已经不是初始连接了
+            _isInitialConnection = false;
+
             if (!isConnected && mounted) {
               // 连接断开，更新状态
               ref.read(connectionStateProvider.notifier).state = false;
               ref.read(connectedDeviceIdProvider.notifier).state = null;
               ref.read(connectedDeviceNameProvider.notifier).state = null;
 
-              // 显示提示
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('设备连接已断开'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 3),
-                ),
-              );
+              // 显示提示（缩短时间）
+              SnackBarHelper.showError(context, '设备连接已断开');
+            } else if (isConnected && mounted) {
+              // 连接成功，重置初始连接标志
+              _isInitialConnection = false;
             }
           },
           onError: (error) {
@@ -86,14 +95,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(connectedDeviceIdProvider.notifier).state = null;
     ref.read(connectedDeviceNameProvider.notifier).state = null;
 
+    // 重置初始连接标志，为下次连接做准备
+    _isInitialConnection = true;
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('已断开连接'),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      SnackBarHelper.showWarning(context, '已断开连接');
     }
   }
 

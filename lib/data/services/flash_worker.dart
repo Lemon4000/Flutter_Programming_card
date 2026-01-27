@@ -46,6 +46,7 @@ class FlashWorker {
   List<FlashBlock> _blocks = [];
   int _currentBlockIndex = 0;
   int _totalCrc = 0;
+  int _lastFrameCrc = 0;  // 上一帧的CRC，用于检测响应错位
 
   // 进度回调
   void Function(FlashProgress)? _onProgress;
@@ -142,6 +143,12 @@ class FlashWorker {
 
   /// 处理接收到的帧
   void handleReceivedFrame(List<int> frame) {
+    final startTime = DateTime.now();
+
+    // 调试：打印收到的帧
+    final payload = String.fromCharCodes(frame.where((b) => b >= 32 && b < 127));
+    print('[DEBUG] FlashWorker收到帧，状态=$_state，载荷=$payload');
+
     switch (_state) {
       case FlashState.waitInit:
         _handleInitResponse(frame);
@@ -150,15 +157,21 @@ class FlashWorker {
         _handleEraseResponse(frame);
         break;
       case FlashState.waitProgram:
+        final programStart = DateTime.now();
         _handleProgramResponse(frame);
+        final programTime = DateTime.now().difference(programStart).inMicroseconds;
+        print('[PERF] 块${_currentBlockIndex} _handleProgramResponse: ${programTime}μs');
         break;
       case FlashState.waitVerify:
         _handleVerifyResponse(frame);
         break;
       default:
         // 忽略其他状态的帧
+        print('[DEBUG] 忽略帧，当前状态=$_state');
         break;
     }
+    final totalTime = DateTime.now().difference(startTime).inMicroseconds;
+    print('[PERF] handleReceivedFrame总耗时: ${totalTime}μs');
   }
 
   /// 状态转换
@@ -311,6 +324,7 @@ class FlashWorker {
     }
 
     final frame = frameBuilder.buildFlashDataFrame(block.address, block.data);
+    onTxData?.call(frame);  // 记录发送数据
     writeData(frame);
 
     _transitionTo(FlashState.waitProgram);
@@ -322,7 +336,10 @@ class FlashWorker {
   void _handleProgramResponse(List<int> frame) {
     final response = frameParser.parseProgramResponse(frame);
 
+    print('[DEBUG] parseProgramResponse结果: ${response != null ? "成功" : "失败"}');
+
     if (response == null || !response.success) {
+      print('[DEBUG] 响应解析失败或不成功，触发重试');
       return;
     }
 
@@ -341,28 +358,54 @@ class FlashWorker {
     // 验证设备返回的 CRC（小端序）
     final replyCrcValue = response.replyCrc[0] | (response.replyCrc[1] << 8);
 
+    print('[DEBUG] CRC验证: 期望=0x${frameCrc.toRadixString(16)}, 收到=0x${replyCrcValue.toRadixString(16)}, 上一帧=0x${_lastFrameCrc.toRadixString(16)}');
+
     if (replyCrcValue != frameCrc) {
+      // 检查是否是上一帧的CRC（响应错位）
+      if (replyCrcValue == _lastFrameCrc && _currentBlockIndex > 0) {
+        print('[DEBUG] 收到上一帧的CRC，设备响应滞后，忽略此响应');
+        // 不触发重试，等待正确的响应
+        // 重新设置超时
+        _startTimeout(const Duration(milliseconds: 20), _onProgramTimeout);
+        return;
+      }
+
+      print('[DEBUG] CRC不匹配，触发重试');
       _retryOrFail();
       return;
     }
 
+    print('[DEBUG] CRC匹配，准备发送下一帧');
+
     // 累加帧 CRC
     _totalCrc = (_totalCrc + frameCrc) & 0xFFFF;
+
+    // 保存当前帧CRC作为下一次的"上一帧CRC"
+    _lastFrameCrc = frameCrc;
 
     // 移动到下一块
     _currentBlockIndex++;
     _retryCount = 0;
 
-    // 更新烧录进度
-    _onProgress?.call(FlashProgress.flashing(
-      completedBlocks: _currentBlockIndex,
-      totalBlocks: _blocks.length,
-      completedBytes: _currentBlockIndex * 256,  // 假设每块256字节
-      totalBytes: _blocks.length * 256,
-      message: '烧录中 $_currentBlockIndex/${_blocks.length}',
-    ));
+    // 更新烧录进度（异步，不阻塞）
+    final progressStart = DateTime.now();
+    Future.microtask(() {
+      _onProgress?.call(FlashProgress.flashing(
+        completedBlocks: _currentBlockIndex,
+        totalBlocks: _blocks.length,
+        completedBytes: _currentBlockIndex * 256,  // 假设每块256字节
+        totalBytes: _blocks.length * 256,
+        message: '烧录中 $_currentBlockIndex/${_blocks.length}',
+      ));
+    });
+    final progressTime = DateTime.now().difference(progressStart).inMicroseconds;
+    print('[PERF] 块${_currentBlockIndex} 进度更新(异步): ${progressTime}μs');
 
+    // 立即转换状态并发送下一帧（在_handleData的microtask中已经异步化）
+    final transitionStart = DateTime.now();
     _transitionTo(FlashState.program);
+    final transitionTime = DateTime.now().difference(transitionStart).inMicroseconds;
+    print('[PERF] 块${_currentBlockIndex} 状态转换: ${transitionTime}μs');
   }
 
   /// 编程超时处理
@@ -414,9 +457,27 @@ class FlashWorker {
 
   /// 处理验证响应
   void _handleVerifyResponse(List<int> frame) {
-    final response = frameParser.parseVerifyResponse(frame);
+    // 验证响应格式与编程响应相同，都是 #HEX:REPLY[2字节CRC];
+    // 先尝试用 parseVerifyResponse，如果失败则尝试 parseProgramResponse
+    var response = frameParser.parseVerifyResponse(frame);
+
+    if (response == null) {
+      print('[DEBUG] parseVerifyResponse失败，尝试parseProgramResponse');
+      final programResponse = frameParser.parseProgramResponse(frame);
+      if (programResponse != null && programResponse.success) {
+        // 转换为 ParsedVerifyResponse
+        response = ParsedVerifyResponse(
+          success: true,
+          replyCrc: programResponse.replyCrc,
+        );
+        print('[DEBUG] parseProgramResponse成功，转换为验证响应');
+      }
+    }
+
+    print('[DEBUG] parseVerifyResponse结果: ${response != null ? "成功" : "失败"}');
 
     if (response == null || !response.success) {
+      print('[DEBUG] 验证响应解析失败或不成功');
       return;
     }
 
@@ -426,10 +487,21 @@ class FlashWorker {
     final replyCrcBigEndian = (response.replyCrc[0] << 8) | response.replyCrc[1];
     final replyCrcLittleEndian = response.replyCrc[0] | (response.replyCrc[1] << 8);
 
+    print('[DEBUG] 总CRC验证: 期望=0x${_totalCrc.toRadixString(16)}, 收到大端=0x${replyCrcBigEndian.toRadixString(16)}, 收到小端=0x${replyCrcLittleEndian.toRadixString(16)}, 最后一帧=0x${_lastFrameCrc.toRadixString(16)}');
+
+    // 检查是否是最后一个编程帧的响应（响应滞后）
+    if ((replyCrcBigEndian == _lastFrameCrc || replyCrcLittleEndian == _lastFrameCrc) && _lastFrameCrc != 0) {
+      print('[DEBUG] 收到最后一个编程帧的CRC，设备响应滞后，忽略此响应');
+      // 重新设置超时，等待正确的验证响应
+      _startTimeout(const Duration(milliseconds: 500), _onVerifyTimeout);
+      return;
+    }
+
     if (replyCrcBigEndian == _totalCrc || replyCrcLittleEndian == _totalCrc) {
       onLog('验证成功: CRC 匹配');
       _transitionTo(FlashState.success);
     } else {
+      print('[DEBUG] 总CRC不匹配，触发重试');
       _retryVerifyOrFail();
     }
   }
@@ -517,6 +589,7 @@ class FlashWorker {
     _blocks = [];
     _currentBlockIndex = 0;
     _totalCrc = 0;
+    _lastFrameCrc = 0;
     _retryCount = 0;
     _onProgress = null;
     _completer = null;

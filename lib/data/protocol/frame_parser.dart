@@ -575,6 +575,11 @@ class FrameParser {
       );
       final checksumBytes = frame.sublist(frame.length - checksumLength);
 
+      // 调试：计算期望的CRC
+      final calculatedCrc = CrcCalculator.crc16Modbus(payloadBytes);
+      final receivedCrc = checksumBytes[0] | (checksumBytes[1] << 8);
+      print('[DEBUG] parseProgramResponse: 计算CRC=0x${calculatedCrc.toRadixString(16)}, 收到CRC=0x${receivedCrc.toRadixString(16)}');
+
       // 3. 验证校验值
       if (!CrcCalculator.verifyChecksum(
         payloadBytes,
@@ -619,11 +624,13 @@ class FrameParser {
       // 1. 检查前导码
       final preambleBytes = config.getPreambleBytes();
       if (frame.length < preambleBytes.length + 3) {
+        print('[DEBUG] parseVerifyResponse: 帧太短 (${frame.length} < ${preambleBytes.length + 3})');
         return null;
       }
 
       for (int i = 0; i < preambleBytes.length; i++) {
         if (frame[i] != preambleBytes[i]) {
+          print('[DEBUG] parseVerifyResponse: 前导码不匹配');
           return null;
         }
       }
@@ -636,23 +643,30 @@ class FrameParser {
       );
       final checksumBytes = frame.sublist(frame.length - checksumLength);
 
+      print('[DEBUG] parseVerifyResponse: 载荷长度=${payloadBytes.length}, 内容=${String.fromCharCodes(payloadBytes.where((b) => b >= 32 && b < 127))}');
+      print('[DEBUG] parseVerifyResponse: 载荷字节=${payloadBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      print('[DEBUG] parseVerifyResponse: 校验字节=${checksumBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+
       // 3. 验证校验值
       if (!CrcCalculator.verifyChecksum(
         payloadBytes,
         checksumBytes,
         config.checksumType.value,
       )) {
+        print('[DEBUG] parseVerifyResponse: 校验值验证失败');
         return null;
       }
 
       // 4. 检查长度（#HEX:REPLY + 2字节 + ;）
       if (payloadBytes.length != 13) {
+        print('[DEBUG] parseVerifyResponse: 载荷长度不是13 (实际=${payloadBytes.length})');
         return null;
       }
 
       // 5. 检查前缀
       final prefix = String.fromCharCodes(payloadBytes.sublist(0, 10));
       if (prefix != '${config.rxStart}HEX:REPLY') {
+        print('[DEBUG] parseVerifyResponse: 前缀不匹配 (期望=${config.rxStart}HEX:REPLY, 实际=$prefix)');
         return null;
       }
 
@@ -661,11 +675,13 @@ class FrameParser {
 
       // 7. 检查结束符
       if (payloadBytes[12] != ';'.codeUnitAt(0)) {
+        print('[DEBUG] parseVerifyResponse: 结束符不是分号');
         return null;
       }
 
       return ParsedVerifyResponse(success: true, replyCrc: replyCrc);
     } catch (e) {
+      print('[DEBUG] parseVerifyResponse: 异常 $e');
       return null;
     }
   }

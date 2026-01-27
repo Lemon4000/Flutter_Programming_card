@@ -8,6 +8,7 @@ import '../../data/datasources/communication_datasource.dart';
 import '../../data/datasources/cross_platform_serial_datasource.dart';
 import '../providers/providers.dart';
 import '../../core/utils/permission_helper.dart';
+import '../../core/utils/snackbar_helper.dart';
 
 /// 设备扫描页面
 class ScanScreen extends ConsumerStatefulWidget {
@@ -203,21 +204,33 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     final connectUseCase = ref.read(connectDeviceUseCaseProvider);
 
-    // 显示连接对话框
+    // 显示连接对话框，并保存对话框是否被显示的状态
     if (!mounted) return;
+    bool dialogShown = true;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('正在连接...'),
-          ],
+      builder: (context) => WillPopScope(
+        onWillPop: () async {
+          // 用户按返回键时，标记对话框已关闭
+          dialogShown = false;
+          return true;
+        },
+        child: const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Text('正在连接...'),
+            ],
+          ),
         ),
       ),
-    );
+    ).then((_) {
+      // 对话框被关闭时，标记状态
+      dialogShown = false;
+    });
 
     try {
       // 添加超时处理
@@ -225,17 +238,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           .timeout(const Duration(seconds: 12));
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // 关闭对话框
+
+      // 只有在对话框还显示时才关闭它
+      if (dialogShown) {
+        Navigator.of(context).pop(); // 关闭对话框
+      }
 
       result.fold(
         (failure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(failure.toUserMessage()),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          if (!mounted) return;
+          SnackBarHelper.showError(context, failure.toUserMessage());
         },
         (_) {
           // 更新全局连接状态
@@ -243,26 +255,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           ref.read(connectedDeviceIdProvider.notifier).state = device.id;
           ref.read(connectedDeviceNameProvider.notifier).state = device.name;
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('已连接到 ${device.name}'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          if (!mounted) return;
+          SnackBarHelper.showSuccess(context, '已连接到 ${device.name}');
         },
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop(); // 关闭对话框
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('连接超时: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // 只有在对话框还显示时才关闭它
+      if (dialogShown) {
+        Navigator.of(context).pop(); // 关闭对话框
+      }
+
+      SnackBarHelper.showError(context, '连接超时: ${e.toString()}');
     }
   }
 
@@ -304,28 +309,44 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final serialDatasource = ref.read(crossPlatformSerialDatasourceProvider);
     final baudRate = ref.read(serialPortBaudRateProvider);
 
-    // 显示连接对话框
+    // 显示连接对话框，并保存对话框是否被显示的状态
     if (!mounted) return;
+    bool dialogShown = true;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Row(
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(width: 16),
-            Text('正在连接 ${device.name} ($baudRate bps)...'),
-          ],
+      builder: (context) => WillPopScope(
+        onWillPop: () async {
+          // 用户按返回键时，标记对话框已关闭
+          dialogShown = false;
+          return true;
+        },
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(width: 16),
+              Text('正在连接 ${device.name} ($baudRate bps)...'),
+            ],
+          ),
         ),
       ),
-    );
+    ).then((_) {
+      // 对话框被关闭时，标记状态
+      dialogShown = false;
+    });
 
     try {
       // 使用用户选择的波特率
       await serialDatasource.connect(device, baudRate: baudRate);
 
       if (!mounted) return;
-      Navigator.of(context).pop(); // 关闭对话框
+
+      // 只有在对话框还显示时才关闭它
+      if (dialogShown) {
+        Navigator.of(context).pop(); // 关闭对话框
+      }
 
       // 更新全局连接状态
       ref.read(connectionStateProvider.notifier).state = true;
@@ -336,24 +357,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       // 重新初始化通信仓库以使用新连接的数据源
       ref.invalidate(communicationRepositoryProvider);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('已连接到 ${device.name}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      if (!mounted) return;
+      SnackBarHelper.showSuccess(context, '已连接到 ${device.name}');
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop(); // 关闭对话框
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('连接失败: $e'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      // 只有在对话框还显示时才关闭它
+      if (dialogShown) {
+        Navigator.of(context).pop(); // 关闭对话框
+      }
+
+      SnackBarHelper.showError(context, '连接失败: $e');
     }
   }
 

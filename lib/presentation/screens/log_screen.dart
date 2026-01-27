@@ -4,19 +4,119 @@ import '../providers/log_provider.dart';
 
 /// 日志条目
 class LogEntry {
-  final DateTime timestamp;
-  final String direction; // 'TX' 或 'RX'
+  final DateTime timestamp;      // 最后一次时间
+  final DateTime firstTimestamp; // 首次时间
+  final String direction;         // 'TX' 或 'RX'
   final List<int> data;
+  final int count;                // 计数
 
   LogEntry({
     required this.timestamp,
+    DateTime? firstTimestamp,
     required this.direction,
     required this.data,
-  });
+    this.count = 1,
+  }) : firstTimestamp = firstTimestamp ?? timestamp;
+
+  /// 创建副本并更新计数和时间戳
+  LogEntry copyWith({
+    DateTime? timestamp,
+    int? count,
+  }) {
+    return LogEntry(
+      timestamp: timestamp ?? this.timestamp,
+      firstTimestamp: firstTimestamp, // 保持首次时间不变
+      direction: direction,
+      data: data,
+      count: count ?? this.count,
+    );
+  }
+
+  /// 计算频率（次/秒）
+  double get frequency {
+    if (count <= 1) return 0.0;
+    
+    final duration = timestamp.difference(firstTimestamp);
+    if (duration.inMilliseconds == 0) return 0.0;
+    
+    // 频率 = (计数 - 1) / 时间差（秒）
+    return (count - 1) / (duration.inMilliseconds / 1000.0);
+  }
+
+  /// 格式化频率
+  String get formattedFrequency {
+    if (frequency == 0.0) return '-';
+    if (frequency >= 1000) {
+      return '${(frequency / 1000).toStringAsFixed(1)}k/s';
+    }
+    return '${frequency.toStringAsFixed(1)}/s';
+  }
+
+  /// 检查数据是否相同（完全匹配）
+  bool hasSameData(List<int> other) {
+    // 完全相同才算相同（逐字节比较）
+    if (data.length != other.length) return false;
+    for (int i = 0; i < data.length; i++) {
+      if (data[i] != other[i]) return false;
+    }
+    return true;
+  }
 
   /// 转换为HEX格式
   String toHex() {
     return data.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+  }
+
+  /// 转换为HEX格式（智能省略）
+  String toHexSmart() {
+    // 先转换为 ASCII 查找 DATA 位置
+    final asciiStr = String.fromCharCodes(data.where((b) => b >= 32 && b <= 126));
+    
+    // 检查是否包含 DATA 关键字
+    if (asciiStr.contains('DATA')) {
+      // 在原始字节中查找 "DATA" 的位置（0x44 0x41 0x54 0x41）
+      int dataIndex = -1;
+      
+      for (int i = 0; i <= data.length - 4; i++) {
+        if (data[i] == 0x44 && data[i + 1] == 0x41 && 
+            data[i + 2] == 0x54 && data[i + 3] == 0x41) {
+          dataIndex = i;
+          break;
+        }
+      }
+      
+      if (dataIndex != -1) {
+        // 查找后面的分号位置（0x3B）
+        int semicolonIndex = -1;
+        for (int i = dataIndex + 4; i < data.length; i++) {
+          if (data[i] == 0x3B) {
+            semicolonIndex = i;
+            break;
+          }
+        }
+        
+        if (semicolonIndex != -1) {
+          // 提取 DATA 之前的字节（包含 "DATA"）
+          final beforeData = data.sublist(0, dataIndex + 4);
+          
+          // 提取分号及之后的字节
+          final afterData = data.sublist(semicolonIndex);
+          
+          // 计算省略的字节数
+          final omittedLength = semicolonIndex - (dataIndex + 4);
+          
+          // 转换为 HEX
+          final beforeHex = beforeData.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+          final afterHex = afterData.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(' ');
+          
+          // 返回省略格式
+          return '$beforeHex ... [省略 $omittedLength 字节] ... $afterHex';
+        }
+      }
+    }
+    
+    // 如果不包含 DATA 或格式不匹配，返回完整 HEX
+    return toHex();
   }
 
   /// 转换为ASCII格式
@@ -28,6 +128,47 @@ class LogEntry {
         return '.';
       }
     }).join('');
+  }
+
+  /// 转换为ASCII格式（智能省略）
+  String toAsciiSmart() {
+    final fullStr = toAscii();
+    
+    // 检查是否包含 DATA 关键字
+    if (fullStr.contains('DATA')) {
+      // 查找 DATA 的位置
+      final dataIndex = fullStr.indexOf('DATA');
+      
+      // 查找后面的分号位置
+      final semicolonIndex = fullStr.indexOf(';', dataIndex);
+      
+      if (semicolonIndex != -1) {
+        // 提取 DATA 之前的部分
+        final beforeData = fullStr.substring(0, dataIndex + 4); // 包含 "DATA"
+        
+        // 提取分号及之后的部分（包含 CRC）
+        final afterData = fullStr.substring(semicolonIndex);
+        
+        // 计算省略的字符数
+        final omittedLength = semicolonIndex - (dataIndex + 4);
+        
+        // 返回省略格式
+        return '$beforeData...[省略 $omittedLength 字节]$afterData';
+      }
+    }
+    
+    // 如果不包含 DATA 或格式不匹配，返回原始字符串
+    return fullStr;
+  }
+
+  /// 计算频率（次/秒）
+  double getFrequency() {
+    if (count <= 1) return 0.0;
+    
+    // 使用第一次和最后一次的时间差
+    // 注意：这里假设 timestamp 是最后一次的时间
+    // 实际应该记录第一次的时间，但为了简化，我们用当前实现
+    return 0.0; // 需要记录首次时间才能准确计算
   }
 
   /// 格式化时间戳
@@ -88,15 +229,11 @@ class _LogScreenState extends ConsumerState<LogScreen> {
       return true;
     }).toList();
 
-    // 自动滚动到底部
+    // 自动滚动到底部（使用jumpTo代替animateTo以提高性能）
     if (_autoScroll && filteredLogs.isNotEmpty && _scrollController.hasClients) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
         }
       });
     }
@@ -760,35 +897,82 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.access_time_rounded,
-                                size: 13,
-                                color: Colors.grey.shade600,
+                        const SizedBox(width: 8),
+                        // 计数徽章（如果计数大于1）
+                        if (log.count > 1)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.orange.shade400,
+                                  Colors.orange.shade600,
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                log.formattedTime,
-                                style: TextStyle(
-                                  color: Colors.grey.shade700,
-                                  fontSize: 11,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.w600,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.orange.withOpacity(0.4),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.repeat_rounded,
+                                  size: 12,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'x${log.count}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.access_time_rounded,
+                                  size: 13,
+                                  color: Colors.grey.shade600,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    log.count > 1 ? '最后: ${log.formattedTime}' : log.formattedTime,
+                                    style: TextStyle(
+                                      color: Colors.grey.shade700,
+                                      fontSize: 11,
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const Spacer(),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                           decoration: BoxDecoration(
@@ -837,6 +1021,48 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                     ),
                     const SizedBox(height: 10),
 
+                    // 频率显示（如果计数 > 1）
+                    if (log.count > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.purple.shade50,
+                                Colors.purple.shade100,
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: Colors.purple.shade200,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.speed_rounded,
+                                size: 14,
+                                color: Colors.purple.shade700,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '频率: ${log.formattedFrequency}',
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.purple.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
                     // 数据内容
                     if (_displayMode == LogDisplayMode.hex || _displayMode == LogDisplayMode.both)
                       Container(
@@ -857,7 +1083,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                           ),
                         ),
                         child: SelectableText(
-                          log.toHex(),
+                          log.toHexSmart(),  // 使用智能省略
                           style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,
@@ -883,7 +1109,7 @@ class _LogScreenState extends ConsumerState<LogScreen> {
                           ),
                         ),
                         child: SelectableText(
-                          log.toAscii(),
+                          log.toAsciiSmart(),  // 使用智能省略
                           style: TextStyle(
                             fontFamily: 'monospace',
                             fontSize: 12,
